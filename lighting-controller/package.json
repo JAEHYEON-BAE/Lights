@@ -1,0 +1,35 @@
+{
+  "name": "lighting-controller",
+  "version": "1.0.0",
+  "description": "Standalone DMX stage lighting controller",
+  "main": "out/main/index.js",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "preview": "electron-vite preview",
+    "package": "npm run build && electron-builder"
+  },
+  "dependencies": {
+    "serialport": "^12.0.0",
+    "zustand": "^4.5.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.1",
+    "autoprefixer": "^10.4.19",
+    "electron": "^31.0.0",
+    "electron-builder": "^24.13.3",
+    "electron-vite": "^2.3.0",
+    "postcss": "^8.4.38",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "tailwindcss": "^3.4.4",
+    "vite": "^5.3.1"
+  },
+  "build": {
+    "appId": "com.lights.controller",
+    "productName": "Lighting Controller",
+    "directories": { "output": "release" },
+    "mac": { "target": "dmg" },
+    "win": { "target": "nsis" }
+  }
+}

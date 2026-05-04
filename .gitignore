@@ -1,0 +1,17 @@
+# dependencies
+node_modules/
+lighting-controller/node_modules/
+
+# build results
+lighting-controller/out/
+lighting-controller/dist/
+
+# macOS system file
+.DS_Store
+
+# log
+*.log
+npm-debug.log*
+
+# editor
+.vscode/
