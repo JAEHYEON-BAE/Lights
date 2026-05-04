@@ -16,7 +16,7 @@ npm run build     # Build renderer + main bundles to out/
 npm run package   # Build + package into release/ as .dmg (macOS) or .nsis (Windows)
 ```
 
-There are no tests.
+There are no tests. Use **simulate mode** (Settings screen → Start Simulate) to develop without real hardware — the bridge fakes heartbeats and skips serial writes.
 
 ## Architecture
 
@@ -26,7 +26,7 @@ The app is split across two Electron processes. All serial I/O and file I/O live
 
 - `src/main/index.js` — registers all IPC handlers (`serial:*`, `file:*`) and wires serial bridge events to `win.webContents.send`
 - `src/main/serial-bridge.js` — `SerialBridge` (EventEmitter): manages the serial port, runs a 44 Hz dirty-flag frame loop, handles simulate mode
-- `src/preload/index.js` — exposes `window.api` to the renderer via `contextBridge`
+- `src/preload/index.js` — exposes `window.api` to the renderer via `contextBridge`; this file is the single source of truth for the entire renderer-accessible API surface
 
 ### Renderer State (`src/renderer/src/store.js`)
 
@@ -34,10 +34,14 @@ Single Zustand store manages all UI and domain state. `setFixtureColor` is the c
 
 ### Engines (renderer-side)
 
-- `FadeEngine` (`engines/fade-engine.js`) — runs a `setInterval` at 16ms; uses cubic ease-in-out to interpolate fixture colors over time. Stored in Zustand (`fadeEngine` ref) and used by `recallScene` when `fade_in_ms > 0`.
-- `EffectEngine` (`engines/effect-engine.js`) — runs a `setInterval` at 16ms; calls a stateless `tick(fixtures, time, params)` function per effect. Available effects: `chase`, `sinePulse`, `colorWave`, `strobe`, `randomFlicker`.
+- `FadeEngine` (`engines/fade-engine.js`) — runs a `setInterval` at 16ms; uses cubic ease-in-out to interpolate fixture colors over time. Stored in Zustand (`fadeEngine`) and used by `recallScene` when `fade_in_ms > 0`.
+- `EffectEngine` (`engines/effect-engine.js`) — runs a `setInterval` at 16ms; calls a stateless `tick(fixtures, time, params)` function per effect. Available effects: `chase`, `sinePulse`, `colorWave`, `strobe`, `randomFlicker`. Stored in a `useRef` in `App.jsx` (not in Zustand) and passed to `EffectEngineScreen` as a prop.
 
 Both engines are instantiated in `App.jsx` on mount and destroyed on unmount.
+
+### Screens
+
+The app renders one of five screens based on `store.activeScreen`: `live` (`LiveControlScreen`), `scenes` (`SceneBrowserScreen`), `cues` (`CueListScreen`), `effects` (`EffectEngineScreen`), `settings` (`SettingsScreen`). Navigation is handled by `Sidebar`.
 
 ### Serial Protocol
 
@@ -45,9 +49,9 @@ Both engines are instantiated in `App.jsx` on mount and destroyed on unmount.
 
 ### Data Files (`resources/`)
 
-- `fixtures.json` — fixture definitions: `id`, `name`, `dmx_base`, `group`. Must stay in sync with `fixtureMap[]` in `arduino/lighting_controller.ino`.
+- `fixtures.json` — top-level `fixtures` array (`id`, `name`, `type`, `dmx_base`, `channels`, `group`) and `groups` array (`id`, `name`, `color`). The `fixtureMap[]` in `arduino/lighting_controller.ino` must stay in sync with `id` → `dmx_base` mappings.
 - `scenes/scene_<id>.json` — one file per scene, keyed by `scene_id` (timestamp-based).
-- `cue-list.json` — ordered array of cues referencing scene IDs.
+- `cue-list.json` — ordered array of cues referencing scene IDs, with per-cue `fade_in_ms`.
 
 In dev, `resourcesDir` resolves to `lighting-controller/resources/`. In packaged builds it resolves to `process.resourcesPath/resources`.
 

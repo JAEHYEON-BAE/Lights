@@ -5,9 +5,9 @@
     {
       "cue_number": 1,
       "name": "Cue 1",
-      "scene_id": "",
+      "scene_id": "scene_1777822462057",
       "trigger": "manual",
-      "fade_in_ms": 1000
+      "fade_in_ms": 0
     }
   ]
 }
