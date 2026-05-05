@@ -20,9 +20,8 @@ export default function StatusBar() {
         : 'bg-accent-green'
 
   return (
-    <div className="h-10 flex items-center gap-4 px-4 bg-surface-800 border-b border-surface-700 flex-shrink-0 text-sm">
-      {/* Title bar drag region */}
-      <div className="w-16 flex-shrink-0" style={{ WebkitAppRegion: 'drag' }} />
+    <div className="h-10 flex items-center gap-4 px-4 bg-surface-800 border-b border-surface-700 flex-shrink-0 text-sm" style={{ WebkitAppRegion: 'drag' }}>
+      <div className="w-16 flex-shrink-0" />
 
       {/* Connection */}
       <div className="flex items-center gap-2">
@@ -54,7 +53,7 @@ export default function StatusBar() {
       )}
 
       {/* Master Dimmer */}
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2" style={{ WebkitAppRegion: 'no-drag' }}>
         <span className="text-gray-500 text-xs whitespace-nowrap">MASTER</span>
         <input
           type="range" min="0" max="1" step="0.01"

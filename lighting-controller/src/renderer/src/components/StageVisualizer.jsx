@@ -1,7 +1,7 @@
 import React from 'react'
 import useStore from '../store'
 
-function FixtureLight({ fixture }) {
+function FixtureLight({ fixture, size = 38, coneHeight = 90 }) {
   const { r = 0, g = 0, b = 0 } = useStore(s => s.fixtureState[fixture.id] || { r: 0, g: 0, b: 0 })
   const blackout = useStore(s => s.blackoutActive)
 
@@ -13,15 +13,15 @@ function FixtureLight({ fixture }) {
   return (
     <div
       title={fixture.name}
-      style={{ position: 'relative', width: 38, height: 128, flexShrink: 0 }}
+      style={{ position: 'relative', width: size, height: size + coneHeight, flexShrink: 0 }}
     >
       {/* PAR can */}
       <div style={{
         position: 'absolute',
         top: 0,
         left: 0,
-        width: 38,
-        height: 38,
+        width: size,
+        height: size,
         borderRadius: '50%',
         background: on
           ? `radial-gradient(circle at 38% 38%, #ffffff 0%, rgb(${dr},${dg},${db}) 48%, rgba(${dr},${dg},${db},0.15) 100%)`
@@ -36,11 +36,11 @@ function FixtureLight({ fixture }) {
       {on && (
         <div style={{
           position: 'absolute',
-          top: 34,
+          top: size - 4,
           left: '50%',
           transform: 'translateX(-50%)',
-          width: 64,
-          height: 90,
+          width: size * 1.7,
+          height: coneHeight,
           background: `linear-gradient(to bottom, rgba(${dr},${dg},${db},0.4) 0%, rgba(${dr},${dg},${db},0) 100%)`,
           clipPath: 'polygon(22% 0%, 78% 0%, 100% 100%, 0% 100%)',
           pointerEvents: 'none',
@@ -51,7 +51,7 @@ function FixtureLight({ fixture }) {
   )
 }
 
-export default function StageVisualizer() {
+export default function StageVisualizer({ compact = false }) {
   const fixtures = useStore(s => s.fixtures)
   const groups   = useStore(s => s.groups)
 
@@ -63,40 +63,65 @@ export default function StageVisualizer() {
 
   const ungrouped = fixtures.filter(f => !groups.some(g => g.id === f.group))
 
+  const fixtureSize  = compact ? 26 : 38
+  const coneHeight   = compact ? 52 : 90
+  const groupGap     = compact ? 10 : 32
+  const fixtureGap   = compact ? 6  : 10
+
   return (
     <div style={{
       position: 'relative',
       background: '#05050a',
       border: '1px solid #1a1a28',
       borderRadius: 12,
-      padding: '12px 20px 28px',
+      padding: compact ? '8px 10px 20px' : '12px 20px 28px',
       overflow: 'hidden',
     }}>
       {/* Truss bar */}
-      <div style={{ height: 4, background: '#252535', borderRadius: 2, marginBottom: 12 }} />
+      <div style={{ height: 4, background: '#252535', borderRadius: 2, marginBottom: compact ? 8 : 12 }} />
 
       {/* Fixture groups */}
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'flex-start', gap: 32 }}>
+      <div style={{
+        display: 'flex',
+        flexDirection: compact ? 'column' : 'row',
+        justifyContent: compact ? 'flex-start' : 'center',
+        alignItems: compact ? 'stretch' : 'flex-start',
+        gap: groupGap,
+      }}>
         {fixturesByGroup.map(g => (
           <div key={g.id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
-            <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
-              {g.fixtures.map(f => <FixtureLight key={f.id} fixture={f} />)}
+            {compact && (
+              <span style={{
+                fontSize: 8,
+                color: '#333348',
+                letterSpacing: '0.15em',
+                fontFamily: 'monospace',
+                textTransform: 'uppercase',
+                alignSelf: 'flex-start',
+              }}>
+                {g.name}
+              </span>
+            )}
+            <div style={{ display: 'flex', gap: fixtureGap, alignItems: 'flex-start', flexWrap: compact ? 'wrap' : 'nowrap' }}>
+              {g.fixtures.map(f => <FixtureLight key={f.id} fixture={f} size={fixtureSize} coneHeight={coneHeight} />)}
             </div>
-            <span style={{
-              fontSize: 9,
-              color: '#262636',
-              letterSpacing: '0.15em',
-              fontFamily: 'monospace',
-              textTransform: 'uppercase',
-            }}>
-              {g.name}
-            </span>
+            {!compact && (
+              <span style={{
+                fontSize: 9,
+                color: '#262636',
+                letterSpacing: '0.15em',
+                fontFamily: 'monospace',
+                textTransform: 'uppercase',
+              }}>
+                {g.name}
+              </span>
+            )}
           </div>
         ))}
 
         {ungrouped.length > 0 && (
-          <div style={{ display: 'flex', gap: 10 }}>
-            {ungrouped.map(f => <FixtureLight key={f.id} fixture={f} />)}
+          <div style={{ display: 'flex', gap: fixtureGap, flexWrap: 'wrap' }}>
+            {ungrouped.map(f => <FixtureLight key={f.id} fixture={f} size={fixtureSize} coneHeight={coneHeight} />)}
           </div>
         )}
       </div>

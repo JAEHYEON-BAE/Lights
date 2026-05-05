@@ -84,6 +84,17 @@ const useStore = create((set, get) => ({
   recallScene: (sceneId, fadeMs = 0) => {
     const scene = get().scenes.find(s => s.scene_id === sceneId)
     if (!scene) return
+
+    if (scene.effect) {
+      get().fadeEngine?.stop?.()
+      get().effectEngine?.start(scene.effect, scene.effectFixtureIds || [], scene.effectParams || {})
+      set({ activeEffect: scene.effect, effectParams: scene.effectParams || {}, effectFixtureIds: scene.effectFixtureIds || [], activeSceneId: sceneId })
+      return
+    }
+
+    get().effectEngine?.stop()
+    set({ activeEffect: null, effectParams: {}, effectFixtureIds: [] })
+
     const dimmer   = get().masterDimmer
     const duration = fadeMs ?? scene.fade_in_ms ?? 0
     if (duration > 0) {
@@ -133,12 +144,16 @@ const useStore = create((set, get) => ({
   fadeEngine: null,
   setFadeEngine: (engine) => set({ fadeEngine: engine }),
 
+  effectEngine: null,
+  setEffectEngine: (engine) => set({ effectEngine: engine }),
+
   // ── Active Effect ──────────────────────────────────────────────────────────
   activeEffect: null,
   effectParams: {},
+  effectFixtureIds: [],
 
-  setActiveEffect: (effect, params) => set({ activeEffect: effect, effectParams: params }),
-  clearEffect:     ()               => set({ activeEffect: null, effectParams: {} }),
+  setActiveEffect: (effect, params, fixtureIds) => set({ activeEffect: effect, effectParams: params, effectFixtureIds: fixtureIds }),
+  clearEffect:     ()               => set({ activeEffect: null, effectParams: {}, effectFixtureIds: [] }),
 
   // ── UI ─────────────────────────────────────────────────────────────────────
   activeScreen: 'live',

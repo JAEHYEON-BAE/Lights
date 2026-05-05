@@ -8,6 +8,11 @@ const FRAME_RATE_HZ  = 44
 const FRAME_INTERVAL = Math.floor(1000 / FRAME_RATE_HZ)
 const MAX_FIXTURES   = 32
 
+// Set DEBUG_SERIAL=1 in your shell to log every outgoing packet and incoming heartbeat.
+// e.g.:  DEBUG_SERIAL=1 npm run dev
+const DEBUG_SERIAL = process.env.DEBUG_SERIAL === '1'
+function dbg(...args) { if (DEBUG_SERIAL) console.log('[serial]', ...args) }
+
 export class SerialBridge extends EventEmitter {
   constructor() {
     super()
@@ -20,10 +25,15 @@ export class SerialBridge extends EventEmitter {
     this.connected    = false
     this.heartbeatTimer = null
     this.lastHeartbeat  = Date.now()
+    this._rxBuf        = Buffer.alloc(0)
   }
 
   async listAllPorts() {
-    return SerialPort.list()
+    const ports = await SerialPort.list()
+    return ports.map(p => ({
+      ...p,
+      path: p.path.replace(/^\/dev\/tty\./, '/dev/cu.')
+    }))
   }
 
   async connect(portPath) {
@@ -36,6 +46,8 @@ export class SerialBridge extends EventEmitter {
         if (err) { reject(err); return }
 
         this.connected = true
+        this.lastHeartbeat = Date.now()
+        this._rxBuf = Buffer.alloc(0)
         this.emit('connected', portPath)
         this._startFrameLoop()
         this._startHeartbeatWatcher()
@@ -66,9 +78,9 @@ export class SerialBridge extends EventEmitter {
 
   setFixture(id, r, g, b) {
     if (id < 0 || id >= MAX_FIXTURES) return
-    const cr = Math.max(0, Math.min(255, Math.round(r)))
-    const cg = Math.max(0, Math.min(255, Math.round(g)))
-    const cb = Math.max(0, Math.min(255, Math.round(b)))
+    const cr = Math.max(0, Math.min(254, Math.round(r)))
+    const cg = Math.max(0, Math.min(254, Math.round(g)))
+    const cb = Math.max(0, Math.min(254, Math.round(b)))
     const p  = this.pendingState[id]
     if (p.r !== cr || p.g !== cg || p.b !== cb) {
       p.r = cr; p.g = cg; p.b = cb
@@ -79,6 +91,7 @@ export class SerialBridge extends EventEmitter {
   setBlackout(active) {
     this.blackout = active
     if (active && this.connected && !this.simulateMode && this.port?.isOpen) {
+      dbg('BLACKOUT  → FF FE 00 00 00')
       this.port.write(Buffer.from([START_BYTE, CMD_BLACKOUT, 0, 0, 0]))
     }
     this.emit('blackout', active)
@@ -86,6 +99,7 @@ export class SerialBridge extends EventEmitter {
 
   sendReset() {
     if (this.connected && !this.simulateMode && this.port?.isOpen) {
+      dbg('RESET     → FF FD 00 00 00')
       this.port.write(Buffer.from([START_BYTE, CMD_RESET, 0, 0, 0]))
     }
   }
@@ -116,17 +130,28 @@ export class SerialBridge extends EventEmitter {
       this.currentState[id] = { r, g, b }
       this.dirtyFlags[id]   = false
     }
-    if (packets.length > 0) this.port.write(Buffer.from(packets))
+    if (packets.length > 0) {
+      if (DEBUG_SERIAL) {
+        for (let i = 0; i < packets.length; i += 5) {
+          dbg(`fixture ${packets[i+1].toString().padStart(2)}  → R:${packets[i+2].toString().padStart(3)} G:${packets[i+3].toString().padStart(3)} B:${packets[i+4].toString().padStart(3)}`)
+        }
+      }
+      this.port.write(Buffer.from(packets))
+    }
   }
 
   _handleIncoming(data) {
-    if (data.length >= 5 && data[0] === 0xAA && data[1] === 0x01) {
+    this._rxBuf = Buffer.concat([this._rxBuf, data])
+    while (this._rxBuf.length >= 8) {
+      const i = this._rxBuf.indexOf(0xAA)
+      if (i === -1) { this._rxBuf = Buffer.alloc(0); break }
+      if (i > 0)    { this._rxBuf = this._rxBuf.slice(i); continue }
+      if (this._rxBuf[1] !== 0x01) { this._rxBuf = this._rxBuf.slice(1); continue }
       this.lastHeartbeat = Date.now()
-      this.emit('heartbeat', {
-        dmxRunning:  data[2] === 1,
-        packetCount: data[3],
-        errorCount:  data[4]
-      })
+      const hb = { dmxRunning: this._rxBuf[2] === 1, packetCount: this._rxBuf[3], errorCount: this._rxBuf[4] }
+      dbg(`heartbeat ← dmxRunning:${hb.dmxRunning} pkt:${hb.packetCount} err:${hb.errorCount}`)
+      this.emit('heartbeat', hb)
+      this._rxBuf = this._rxBuf.slice(8)
     }
   }
 
@@ -159,7 +184,7 @@ export class SerialBridge extends EventEmitter {
     this._stopHeartbeatWatcher()
     this.heartbeatTimer = setInterval(() => {
       // Only warn if using a real port (not simulate mode)
-      if (this.connected && !this.simulateMode && Date.now() - this.lastHeartbeat > 3000) {
+      if (this.connected && !this.simulateMode && Date.now() - this.lastHeartbeat > 5000) {
         this.emit('heartbeat-timeout')
       }
     }, 1000)

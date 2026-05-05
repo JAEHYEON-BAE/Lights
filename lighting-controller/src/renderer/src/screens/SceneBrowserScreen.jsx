@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
 import useStore from '../store'
+import { EFFECTS } from '../engines/effect-engine'
 
 function rgbToHex(r, g, b) {
   return '#' + [r, g, b].map(x => x.toString(16).padStart(2, '0')).join('')
@@ -20,13 +21,16 @@ function SceneThumbnail({ scene, fixtureCount }) {
 }
 
 export default function SceneBrowserScreen() {
-  const scenes       = useStore(s => s.scenes)
-  const fixtures     = useStore(s => s.fixtures)
-  const fixtureState = useStore(s => s.fixtureState)
-  const recallScene  = useStore(s => s.recallScene)
-  const saveScene    = useStore(s => s.saveScene)
-  const deleteScene  = useStore(s => s.deleteScene)
-  const activeSceneId = useStore(s => s.activeSceneId)
+  const scenes           = useStore(s => s.scenes)
+  const fixtures         = useStore(s => s.fixtures)
+  const fixtureState     = useStore(s => s.fixtureState)
+  const recallScene      = useStore(s => s.recallScene)
+  const saveScene        = useStore(s => s.saveScene)
+  const deleteScene      = useStore(s => s.deleteScene)
+  const activeSceneId    = useStore(s => s.activeSceneId)
+  const activeEffect     = useStore(s => s.activeEffect)
+  const effectParams     = useStore(s => s.effectParams)
+  const effectFixtureIds = useStore(s => s.effectFixtureIds)
 
   const [search, setSearch]     = useState('')
   const [editName, setEditName] = useState('')
@@ -49,6 +53,11 @@ export default function SceneBrowserScreen() {
         const c = fixtureState[f.id] || { r: 0, g: 0, b: 0 }
         return { id: f.id, ...c }
       })
+    }
+    if (activeEffect) {
+      scene.effect = activeEffect
+      scene.effectParams = { ...effectParams }
+      scene.effectFixtureIds = [...effectFixtureIds]
     }
     await saveScene(scene)
     setEditName('')
@@ -113,8 +122,13 @@ export default function SceneBrowserScreen() {
             >
               <SceneThumbnail scene={scene} fixtureCount={fixtures.length} />
               <div className="mt-2 text-sm font-medium truncate">{scene.name}</div>
-              <div className="text-xs text-gray-500 mt-0.5">
-                {scene.fixtures?.length ?? 0} fixtures · {scene.fade_in_ms ?? 0}ms fade
+              <div className="text-xs text-gray-500 mt-0.5 flex items-center gap-1.5 flex-wrap">
+                <span>{scene.fixtures?.length ?? 0} fx · {scene.fade_in_ms ?? 0}ms</span>
+                {scene.effect && (
+                  <span className="px-1.5 py-0.5 rounded bg-accent-purple/30 text-purple-300 font-mono">
+                    {EFFECTS[scene.effect]?.name ?? scene.effect}
+                  </span>
+                )}
               </div>
               <button
                 onClick={() => recallScene(scene.scene_id)}

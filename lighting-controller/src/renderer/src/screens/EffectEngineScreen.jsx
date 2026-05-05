@@ -17,7 +17,8 @@ export default function EffectEngineScreen({ effectEngine }) {
   const [selectedGroup, setSelectedGroup]   = useState('all')
   const [params, setParams] = useState(EFFECTS[selectedEffect]?.defaultParams || {})
   const [colorPickerField, setColorPickerField] = useState(null)
-  const [running, setRunning] = useState(false)
+
+  const running = useStore(s => s.activeEffect !== null)
 
   // Sync params when effect changes
   useEffect(() => {
@@ -34,14 +35,12 @@ export default function EffectEngineScreen({ effectEngine }) {
   const startEffect = () => {
     const ids = getTargetFixtures()
     effectEngine.current?.start(selectedEffect, ids, params)
-    setActiveEffect(selectedEffect, params)
-    setRunning(true)
+    setActiveEffect(selectedEffect, params, ids)
   }
 
   const stopEffect = () => {
     effectEngine.current?.stop()
     clearEffect()
-    setRunning(false)
   }
 
   const setParam = (key, value) => {
@@ -61,7 +60,7 @@ export default function EffectEngineScreen({ effectEngine }) {
         {EFFECT_LIST.map(e => (
           <button
             key={e.key}
-            onClick={() => { setSelectedEffect(e.key); if (running) stopEffect() }}
+            onClick={() => { setSelectedEffect(e.key); stopEffect() }}
             className={`px-3 py-2.5 rounded-xl text-sm text-left transition-colors
               ${selectedEffect === e.key
                 ? 'bg-accent-blue text-white'
@@ -173,7 +172,14 @@ export default function EffectEngineScreen({ effectEngine }) {
       {colorPickerField && (
         <ColorPicker
           r={params.r || 0} g={params.g || 0} b={params.b || 0}
-          onChange={(r, g, b) => { setParam('r', r); setParam('g', g); setParam('b', b) }}
+          onChange={(r, g, b) => {
+            const next = { ...params, r, g, b }
+            setParams(next)
+            if (running) {
+              const ids = getTargetFixtures()
+              effectEngine.current?.start(selectedEffect, ids, next)
+            }
+          }}
           onClose={() => setColorPickerField(null)}
         />
       )}

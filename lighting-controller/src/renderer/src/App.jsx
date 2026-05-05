@@ -5,6 +5,7 @@ import { EffectEngine } from './engines/effect-engine'
 import Sidebar          from './components/Sidebar'
 import StatusBar        from './components/StatusBar'
 import BlackoutButton   from './components/BlackoutButton'
+import StageVisualizer  from './components/StageVisualizer'
 import LiveControlScreen   from './screens/LiveControlScreen'
 import SceneBrowserScreen  from './screens/SceneBrowserScreen'
 import CueListScreen       from './screens/CueListScreen'
@@ -21,6 +22,7 @@ export default function App() {
   const loadScenes         = useStore(s => s.loadScenes)
   const loadCueList        = useStore(s => s.loadCueList)
   const setFadeEngine      = useStore(s => s.setFadeEngine)
+  const setEffectEngine    = useStore(s => s.setEffectEngine)
   const setFixtureColor    = useStore(s => s.setFixtureColor)
   const toggleBlackout     = useStore(s => s.toggleBlackout)
   const goNextCue          = useStore(s => s.goNextCue)
@@ -33,7 +35,9 @@ export default function App() {
     const fadeEng = new FadeEngine(setFixtureColor)
     setFadeEngine(fadeEng)
 
-    effectEngineRef.current = new EffectEngine(setFixtureColor)
+    const effectEng = new EffectEngine(setFixtureColor)
+    effectEngineRef.current = effectEng
+    setEffectEngine(effectEng)
 
     // Load initial data
     window.api.loadFixtures().then(loadFixtures)
@@ -48,7 +52,7 @@ export default function App() {
 
     return () => {
       fadeEng.destroy()
-      effectEngineRef.current?.destroy()
+      effectEng.destroy()
     }
   }, [])
 
@@ -81,6 +85,11 @@ export default function App() {
           <div className="flex-1 overflow-auto p-4">
             {screens[activeScreen]}
           </div>
+          {activeScreen !== 'settings' && (
+            <div className="w-56 flex-shrink-0 flex flex-col gap-3 p-3 border-l border-surface-700 overflow-y-auto">
+              <StageVisualizer compact />
+            </div>
+          )}
           <BlackoutButton />
         </div>
       </div>

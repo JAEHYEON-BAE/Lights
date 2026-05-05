@@ -1,7 +1,6 @@
 import React, { useState } from 'react'
 import useStore from '../store'
 import ColorPicker from '../components/ColorPicker'
-import StageVisualizer from '../components/StageVisualizer'
 
 function rgbToHex(r, g, b) {
   return '#' + [r, g, b].map(x => x.toString(16).padStart(2, '0')).join('')
@@ -86,9 +85,6 @@ export default function LiveControlScreen() {
 
   return (
     <div className="flex flex-col gap-4 h-full">
-      {/* Stage visualizer */}
-      <StageVisualizer />
-
       {/* Group bar */}
       <div className="flex items-center gap-2 flex-wrap">
         {allGroups.map(g => (
