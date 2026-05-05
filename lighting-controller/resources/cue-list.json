@@ -1,5 +1,20 @@
 {
   "version": "1.0",
   "show_name": "Untitled Show",
-  "cues": []
+  "cues": [
+    {
+      "cue_number": 1,
+      "name": "Cue 1",
+      "scene_id": "scene_1777989638633",
+      "trigger": "manual",
+      "fade_in_ms": 0
+    },
+    {
+      "cue_number": 2,
+      "name": "Cue 2",
+      "scene_id": "scene_1777989656902",
+      "trigger": "manual",
+      "fade_in_ms": 0
+    }
+  ]
 }

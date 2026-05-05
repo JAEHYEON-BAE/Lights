@@ -141,6 +141,7 @@ export class SerialBridge extends EventEmitter {
   }
 
   _handleIncoming(data) {
+    dbg(`raw ← [${Array.from(data).map(b => b.toString(16).padStart(2, '0').toUpperCase()).join(' ')}]`)
     this._rxBuf = Buffer.concat([this._rxBuf, data])
     while (this._rxBuf.length >= 8) {
       const i = this._rxBuf.indexOf(0xAA)
