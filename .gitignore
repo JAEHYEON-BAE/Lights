@@ -15,3 +15,5 @@ npm-debug.log*
 
 # editor
 .vscode/
+
+CLAUDE.md
