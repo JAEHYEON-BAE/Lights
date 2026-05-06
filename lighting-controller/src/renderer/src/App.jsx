@@ -6,7 +6,6 @@ import Sidebar          from './components/Sidebar'
 import StatusBar        from './components/StatusBar'
 import BlackoutButton   from './components/BlackoutButton'
 import StageVisualizer  from './components/StageVisualizer'
-import LiveControlScreen   from './screens/LiveControlScreen'
 import SceneBrowserScreen  from './screens/SceneBrowserScreen'
 import CueListScreen       from './screens/CueListScreen'
 import EffectEngineScreen  from './screens/EffectEngineScreen'
@@ -71,10 +70,9 @@ export default function App() {
   }, [])
 
   const screens = {
-    live:     <LiveControlScreen />,
+    live:     <EffectEngineScreen effectEngine={effectEngineRef} />,
     scenes:   <SceneBrowserScreen />,
     cues:     <CueListScreen />,
-    effects:  <EffectEngineScreen effectEngine={effectEngineRef} />,
     settings: <SettingsScreen />,
   }
 

@@ -196,6 +196,16 @@ const useStore = create((set, get) => ({
     })
   },
 
+  updateFixtureEffectParams: (fixtureIds, params) => {
+    set(s => {
+      const next = { ...s.fixtureEffects }
+      fixtureIds.forEach(id => {
+        if (next[id]) next[id] = { ...next[id], params }
+      })
+      return { fixtureEffects: next }
+    })
+  },
+
   clearFixtureEffect: (fixtureIds) => {
     set(s => {
       const next = { ...s.fixtureEffects }

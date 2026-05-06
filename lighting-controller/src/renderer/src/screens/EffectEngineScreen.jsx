@@ -1,34 +1,39 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import useStore from '../store'
 import { EFFECTS } from '../engines/effect-engine'
 import ColorPicker from '../components/ColorPicker'
 
 const EFFECT_LIST = Object.entries(EFFECTS).map(([key, val]) => ({ key, name: val.name, defaultParams: val.defaultParams }))
-const NONE_KEY    = '__none__'
 
 export default function EffectEngineScreen({ effectEngine }) {
-  const fixtures        = useStore(s => s.fixtures)
-  const groups          = useStore(s => s.groups)
-  const fixtureState    = useStore(s => s.fixtureState)
-  const fixtureEffects  = useStore(s => s.fixtureEffects)
-  const setFixtureEffect  = useStore(s => s.setFixtureEffect)
-  const clearFixtureEffect = useStore(s => s.clearFixtureEffect)
-  const saveScene       = useStore(s => s.saveScene)
-  const setFixtureColor = useStore(s => s.setFixtureColor)
+  const fixtures                  = useStore(s => s.fixtures)
+  const groups                    = useStore(s => s.groups)
+  const fixtureState              = useStore(s => s.fixtureState)
+  const fixtureEffects            = useStore(s => s.fixtureEffects)
+  const setFixtureEffect          = useStore(s => s.setFixtureEffect)
+  const updateFixtureEffectParams = useStore(s => s.updateFixtureEffectParams)
+  const clearFixtureEffect        = useStore(s => s.clearFixtureEffect)
+  const saveScene                 = useStore(s => s.saveScene)
+  const setFixtureColor           = useStore(s => s.setFixtureColor)
 
-  const [selectedIds, setSelectedIds]   = useState([])
-  const [effectKey, setEffectKey]       = useState('sinePulse')
-  const [params, setParams]             = useState({ ...EFFECTS['sinePulse'].defaultParams })
+  const [selectedIds, setSelectedIds] = useState([])
+  const [effectKey, setEffectKey]     = useState('color')
+  const [params, setParams]           = useState({ ...EFFECTS['color'].defaultParams })
   const [colorPickerOpen, setColorPickerOpen] = useState(false)
-  const [sceneName, setSceneName]       = useState('')
+  const [sceneName, setSceneName]     = useState('')
   const [showSaveForm, setShowSaveForm] = useState(false)
+  const paramsCacheRef = useRef({})
 
-  // When a single fixture is clicked, load its current effect into the editor
   const loadFixtureIntoEditor = (id) => {
+    paramsCacheRef.current[effectKey] = params
     const entry = fixtureEffects[id]
     if (entry) {
       setEffectKey(entry.effectKey)
       setParams({ ...entry.params })
+    } else {
+      setEffectKey('color')
+      const c = fixtureState[id] || { d: 254, r: 0, g: 0, b: 0 }
+      setParams({ dim: c.d ?? 254, r: c.r, g: c.g, b: c.b })
     }
   }
 
@@ -45,14 +50,24 @@ export default function EffectEngineScreen({ effectEngine }) {
     const ids = groupId === 'all'
       ? fixtures.map(f => f.id)
       : fixtures.filter(f => f.group === groupId).map(f => f.id)
-    setSelectedIds(ids)
+    const allSelected = ids.every(id => selectedIds.includes(id))
+    setSelectedIds(allSelected ? selectedIds.filter(id => !ids.includes(id)) : ids)
   }
 
-  useEffect(() => {
-    setParams({ ...EFFECTS[effectKey]?.defaultParams })
-  }, [effectKey])
+  const handleEffectChange = (newKey) => {
+    paramsCacheRef.current[effectKey] = params
+    setEffectKey(newKey)
+    setParams(paramsCacheRef.current[newKey] ?? { ...EFFECTS[newKey]?.defaultParams })
+  }
 
-  const setParam = (key, value) => setParams(p => ({ ...p, [key]: value }))
+  const setParam = (key, value) => {
+    const next = { ...params, [key]: value }
+    setParams(next)
+    if (selectedIds.length > 0 && selectedIds.every(id => fixtureEffects[id])) {
+      effectEngine.current?.updateFixtureEffectParams(selectedIds, next)
+      updateFixtureEffectParams(selectedIds, next)
+    }
+  }
 
   const applyToSelected = () => {
     if (selectedIds.length === 0) return
@@ -74,14 +89,14 @@ export default function EffectEngineScreen({ effectEngine }) {
       name: sceneName.trim(),
       fade_in_ms: 0,
       fixtures: fixtures.map(f => {
-        const color = fixtureState[f.id] || { d: 254, r: 0, g: 0, b: 0 }
+        const c     = fixtureState[f.id] || { d: 254, r: 0, g: 0, b: 0 }
         const entry = fixtureEffects[f.id] || null
         return {
           id:           f.id,
-          dim:          color.d ?? 254,
-          r:            color.r,
-          g:            color.g,
-          b:            color.b,
+          dim:          c.d ?? 254,
+          r:            c.r,
+          g:            c.g,
+          b:            c.b,
           effect:       entry?.effectKey ?? null,
           effectParams: entry?.params    ?? {},
         }
@@ -101,7 +116,6 @@ export default function EffectEngineScreen({ effectEngine }) {
       <div className="w-44 flex-shrink-0 flex flex-col gap-2">
         <div className="text-xs text-gray-500 uppercase tracking-wider">Fixtures</div>
 
-        {/* Group quick-select */}
         <div className="flex flex-wrap gap-1 mb-1">
           {allGroups.map(g => (
             <button key={g.id} onClick={() => selectGroup(g.id)}
@@ -113,11 +127,11 @@ export default function EffectEngineScreen({ effectEngine }) {
 
         <div className="flex flex-col gap-1 overflow-auto flex-1">
           {fixtures.map(f => {
-            const entry    = fixtureEffects[f.id]
-            const checked  = selectedIds.includes(f.id)
-            const c        = fixtureState[f.id] || { d: 254, r: 0, g: 0, b: 0 }
-            const dim      = (c.d ?? 254) / 254
-            const swatch   = `rgb(${Math.round(c.r*dim)},${Math.round(c.g*dim)},${Math.round(c.b*dim)})`
+            const entry   = fixtureEffects[f.id]
+            const checked = selectedIds.includes(f.id)
+            const c       = fixtureState[f.id] || { d: 254, r: 0, g: 0, b: 0 }
+            const dim     = (c.d ?? 254) / 254
+            const swatch  = `rgb(${Math.round(c.r*dim)},${Math.round(c.g*dim)},${Math.round(c.b*dim)})`
             return (
               <label key={f.id}
                 className={`flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer select-none transition-colors
@@ -142,7 +156,7 @@ export default function EffectEngineScreen({ effectEngine }) {
         </button>
       </div>
 
-      {/* ── Middle: effect editor ── */}
+      {/* ── Middle: editor ── */}
       <div className="flex-1 flex flex-col gap-3 min-w-0">
         <div className="bg-surface-800 rounded-2xl p-5 flex flex-col gap-4">
 
@@ -151,7 +165,7 @@ export default function EffectEngineScreen({ effectEngine }) {
             <div className="text-xs text-gray-500 mb-2">Effect</div>
             <div className="flex flex-wrap gap-2">
               {EFFECT_LIST.map(e => (
-                <button key={e.key} onClick={() => setEffectKey(e.key)}
+                <button key={e.key} onClick={() => handleEffectChange(e.key)}
                   className={`px-3 py-1.5 rounded-lg text-sm transition-colors
                     ${effectKey === e.key
                       ? 'bg-accent-blue text-white'
@@ -161,6 +175,19 @@ export default function EffectEngineScreen({ effectEngine }) {
               ))}
             </div>
           </div>
+
+          {/* Dimmer */}
+          {'dim' in params && (
+            <div>
+              <label className="text-xs text-gray-500 block mb-1">
+                Dimmer: {Math.round((params.dim / 254) * 100)}%
+              </label>
+              <input type="range" min="0" max="254" step="1"
+                value={params.dim}
+                onChange={e => setParam('dim', +e.target.value)}
+                className="w-full" />
+            </div>
+          )}
 
           {/* Speed */}
           {'speed' in params && (

@@ -2,10 +2,9 @@ import React from 'react'
 import useStore from '../store'
 
 const NAV = [
-  { id: 'live',     label: 'Live',     icon: '◉' },
+  { id: 'live',     label: 'Live',     icon: '✦' },
   { id: 'scenes',   label: 'Scenes',   icon: '▤' },
   { id: 'cues',     label: 'Cue List', icon: '▶' },
-  { id: 'effects',  label: 'Effects',  icon: '✦' },
   { id: 'settings', label: 'Settings', icon: '⚙' },
 ]
 

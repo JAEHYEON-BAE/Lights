@@ -7,6 +7,16 @@ function hsvToRgb(h, s, v) {
 }
 
 export const EFFECTS = {
+  color: {
+    name: 'Color',
+    static: true,
+    defaultParams: { dim: 254, r: 255, g: 255, b: 255 },
+    init(fixtures, params, setFixtureColor, setFixtureDimmer) {
+      fixtures.forEach(id => setFixtureColor(id, params.r, params.g, params.b))
+      fixtures.forEach(id => setFixtureDimmer(id, params.dim))
+    },
+    tick() { return [] }
+  },
   chase: {
     name: 'Color Chase',
     defaultParams: { speed: 2, r: 255, g: 100, b: 0 },
@@ -22,7 +32,7 @@ export const EFFECTS = {
   },
   sinePulse: {
     name: 'Sine Pulse',
-    defaultParams: { speed: 1, r: 0, g: 100, b: 255, phaseOffset: 0, minBrightness: 1 },
+    defaultParams: { speed: 1, r: 0, g: 100, b: 255, phaseOffset: 0, minBrightness: 0 },
     init(fixtures, params, setFixtureColor) {
       fixtures.forEach(id => setFixtureColor(id, params.r, params.g, params.b))
     },
@@ -93,8 +103,20 @@ export class EffectEngine {
     const startTime = Date.now()
     const groupId   = Symbol()
     fixtureIds.forEach(id => this.fixtureEffects.set(id, { effectKey, params, startTime, groupId }))
-    if (effect.init) effect.init(fixtureIds, params, this.setFixtureColor)
+    if (effect.init) effect.init(fixtureIds, params, this.setFixtureColor, this.setFixtureDimmer)
     this._ensureTicker()
+  }
+
+  updateFixtureEffectParams(fixtureIds, params) {
+    fixtureIds.forEach(id => {
+      const entry = this.fixtureEffects.get(id)
+      if (!entry) return
+      entry.params = params
+      const effect = EFFECTS[entry.effectKey]
+      if (effect?.static && effect?.init) {
+        effect.init([id], params, this.setFixtureColor, this.setFixtureDimmer)
+      }
+    })
   }
 
   clearFixtureEffect(fixtureIds) {
