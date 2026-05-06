@@ -17,3 +17,6 @@ npm-debug.log*
 .vscode/
 
 CLAUDE.md
+
+._*
+.mv_*

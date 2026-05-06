@@ -129,10 +129,18 @@ const useStore = create((set, get) => ({
     }
 
     const startEffects = () => {
+      // Group fixtures that share the same effect+params so idx-based offsets
+      // (random flicker seed, sine phase, etc.) are restored correctly.
+      const groups = new Map()
       scene.fixtures.forEach(({ id, effect, effectParams }) => {
         if (!effect) return
-        get().effectEngine?.setFixtureEffect([id], effect, effectParams ?? {})
-        get().setFixtureEffect([id], effect, effectParams ?? {})
+        const key = effect + '\0' + JSON.stringify(effectParams ?? {})
+        if (!groups.has(key)) groups.set(key, { effect, effectParams: effectParams ?? {}, ids: [] })
+        groups.get(key).ids.push(id)
+      })
+      groups.forEach(({ effect, effectParams, ids }) => {
+        get().effectEngine?.setFixtureEffect(ids, effect, effectParams)
+        ids.forEach(id => get().setFixtureEffect([id], effect, effectParams))
       })
     }
 
