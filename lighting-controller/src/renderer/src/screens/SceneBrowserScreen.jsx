@@ -9,28 +9,35 @@ function rgbToHex(r, g, b) {
 function SceneThumbnail({ scene, fixtureCount }) {
   const slots = Array.from({ length: Math.min(fixtureCount || 8, 8) }, (_, i) => {
     const f = scene.fixtures.find(x => x.id === i)
-    return f ? rgbToHex(f.r, f.g, f.b) : '#111'
+    if (!f) return { color: '#111', hasEffect: false }
+    const dim = (f.dim ?? 254) / 254
+    return {
+      color: rgbToHex(Math.round(f.r * dim), Math.round(f.g * dim), Math.round(f.b * dim)),
+      hasEffect: !!f.effect,
+    }
   })
   return (
     <div className="grid grid-cols-4 gap-0.5 rounded overflow-hidden w-full h-10">
-      {slots.map((color, i) => (
-        <div key={i} style={{ background: color }} className="h-full" />
+      {slots.map(({ color, hasEffect }, i) => (
+        <div key={i} style={{ background: color }} className="h-full relative">
+          {hasEffect && (
+            <span className="absolute bottom-0.5 right-0.5 w-1.5 h-1.5 rounded-full bg-white opacity-60" />
+          )}
+        </div>
       ))}
     </div>
   )
 }
 
 export default function SceneBrowserScreen() {
-  const scenes           = useStore(s => s.scenes)
-  const fixtures         = useStore(s => s.fixtures)
-  const fixtureState     = useStore(s => s.fixtureState)
-  const recallScene      = useStore(s => s.recallScene)
-  const saveScene        = useStore(s => s.saveScene)
-  const deleteScene      = useStore(s => s.deleteScene)
-  const activeSceneId    = useStore(s => s.activeSceneId)
-  const activeEffect     = useStore(s => s.activeEffect)
-  const effectParams     = useStore(s => s.effectParams)
-  const effectFixtureIds = useStore(s => s.effectFixtureIds)
+  const scenes        = useStore(s => s.scenes)
+  const fixtures      = useStore(s => s.fixtures)
+  const fixtureState  = useStore(s => s.fixtureState)
+  const fixtureEffects = useStore(s => s.fixtureEffects)
+  const recallScene   = useStore(s => s.recallScene)
+  const saveScene     = useStore(s => s.saveScene)
+  const deleteScene   = useStore(s => s.deleteScene)
+  const activeSceneId = useStore(s => s.activeSceneId)
 
   const [search, setSearch]     = useState('')
   const [editName, setEditName] = useState('')
@@ -44,25 +51,31 @@ export default function SceneBrowserScreen() {
   const handleSaveCurrent = async () => {
     if (!editName.trim()) return
     const scene = {
-      version: '1.0',
+      version: '2.0',
       scene_id: `scene_${Date.now()}`,
       name: editName.trim(),
       fade_in_ms: 500,
-      fade_out_ms: 0,
       fixtures: fixtures.map(f => {
-        const c = fixtureState[f.id] || { r: 0, g: 0, b: 0 }
-        return { id: f.id, ...c }
+        const color = fixtureState[f.id] || { d: 254, r: 0, g: 0, b: 0 }
+        const entry = fixtureEffects[f.id] || null
+        return {
+          id:           f.id,
+          dim:          color.d ?? 254,
+          r:            color.r,
+          g:            color.g,
+          b:            color.b,
+          effect:       entry?.effectKey ?? null,
+          effectParams: entry?.params    ?? {},
+        }
       })
-    }
-    if (activeEffect) {
-      scene.effect = activeEffect
-      scene.effectParams = { ...effectParams }
-      scene.effectFixtureIds = [...effectFixtureIds]
     }
     await saveScene(scene)
     setEditName('')
     setSaving(false)
   }
+
+  const hasAnyEffect = scene =>
+    scene.fixtures?.some(f => f.effect) ?? false
 
   return (
     <div className="flex flex-col gap-4 h-full" onClick={() => setContextMenu(null)}>
@@ -124,9 +137,9 @@ export default function SceneBrowserScreen() {
               <div className="mt-2 text-sm font-medium truncate">{scene.name}</div>
               <div className="text-xs text-gray-500 mt-0.5 flex items-center gap-1.5 flex-wrap">
                 <span>{scene.fixtures?.length ?? 0} fx · {scene.fade_in_ms ?? 0}ms</span>
-                {scene.effect && (
+                {hasAnyEffect(scene) && (
                   <span className="px-1.5 py-0.5 rounded bg-accent-purple/30 text-purple-300 font-mono">
-                    {EFFECTS[scene.effect]?.name ?? scene.effect}
+                    fx
                   </span>
                 )}
               </div>

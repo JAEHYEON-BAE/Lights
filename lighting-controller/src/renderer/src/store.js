@@ -1,5 +1,25 @@
 import { create } from 'zustand'
 
+function migrateScene(raw) {
+  if (!raw) return null
+  if (raw.version === '2.0') return raw
+  const effectIds = new Set(raw.effectFixtureIds || [])
+  return {
+    ...raw,
+    version: '2.0',
+    fixtures: raw.fixtures.map(f => ({
+      id: f.id,
+      dim: 254,
+      r: f.r, g: f.g, b: f.b,
+      effect:       effectIds.has(f.id) ? (raw.effect || null) : null,
+      effectParams: effectIds.has(f.id) ? (raw.effectParams || {}) : {},
+    })),
+    effect: undefined,
+    effectParams: undefined,
+    effectFixtureIds: undefined,
+  }
+}
+
 const MAX_FIXTURES = 32
 
 const useStore = create((set, get) => ({
@@ -90,28 +110,38 @@ const useStore = create((set, get) => ({
   },
 
   recallScene: (sceneId, fadeMs = 0) => {
-    const scene = get().scenes.find(s => s.scene_id === sceneId)
+    const raw = get().scenes.find(s => s.scene_id === sceneId)
+    const scene = migrateScene(raw)
     if (!scene) return
 
-    if (scene.effect) {
-      get().fadeEngine?.stop?.()
-      get().effectEngine?.start(scene.effect, scene.effectFixtureIds || [], scene.effectParams || {})
-      set({ activeEffect: scene.effect, effectParams: scene.effectParams || {}, effectFixtureIds: scene.effectFixtureIds || [], activeSceneId: sceneId })
-      return
-    }
+    get().effectEngine?.clearAll()
+    set({ fixtureEffects: {} })
 
-    get().effectEngine?.stop()
-    set({ activeEffect: null, effectParams: {}, effectFixtureIds: [] })
-
-    const dimmer   = get().masterDimmer
     const duration = fadeMs ?? scene.fade_in_ms ?? 0
+
     if (duration > 0) {
-      get().fadeEngine?.fadeScene(scene, dimmer, duration)
+      get().fadeEngine?.fadeScene(scene, get().masterDimmer, duration)
     } else {
-      scene.fixtures.forEach(({ id, r, g, b }) => {
+      scene.fixtures.forEach(({ id, dim, r, g, b }) => {
         get().setFixtureColor(id, r, g, b)
+        get().setFixtureDimmer(id, dim ?? 254)
       })
     }
+
+    const startEffects = () => {
+      scene.fixtures.forEach(({ id, effect, effectParams }) => {
+        if (!effect) return
+        get().effectEngine?.setFixtureEffect([id], effect, effectParams ?? {})
+        get().setFixtureEffect([id], effect, effectParams ?? {})
+      })
+    }
+
+    if (duration > 0) {
+      setTimeout(startEffects, duration)
+    } else {
+      startEffects()
+    }
+
     set({ activeSceneId: sceneId })
   },
 
@@ -155,13 +185,26 @@ const useStore = create((set, get) => ({
   effectEngine: null,
   setEffectEngine: (engine) => set({ effectEngine: engine }),
 
-  // ── Active Effect ──────────────────────────────────────────────────────────
-  activeEffect: null,
-  effectParams: {},
-  effectFixtureIds: [],
+  // ── Per-fixture Effects ────────────────────────────────────────────────────
+  fixtureEffects: {}, // { [fixtureId]: { effectKey, params } }
 
-  setActiveEffect: (effect, params, fixtureIds) => set({ activeEffect: effect, effectParams: params, effectFixtureIds: fixtureIds }),
-  clearEffect:     ()               => set({ activeEffect: null, effectParams: {}, effectFixtureIds: [] }),
+  setFixtureEffect: (fixtureIds, effectKey, params) => {
+    set(s => {
+      const next = { ...s.fixtureEffects }
+      fixtureIds.forEach(id => { next[id] = { effectKey, params } })
+      return { fixtureEffects: next }
+    })
+  },
+
+  clearFixtureEffect: (fixtureIds) => {
+    set(s => {
+      const next = { ...s.fixtureEffects }
+      fixtureIds.forEach(id => { delete next[id] })
+      return { fixtureEffects: next }
+    })
+  },
+
+  clearAllEffects: () => set({ fixtureEffects: {} }),
 
   // ── UI ─────────────────────────────────────────────────────────────────────
   activeScreen: 'live',

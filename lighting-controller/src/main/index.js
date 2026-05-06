@@ -1,4 +1,23 @@
 import { app, BrowserWindow, ipcMain } from 'electron'
+
+function migrateScene(raw) {
+  if (!raw || raw.version === '2.0') return raw
+  const effectIds = new Set(raw.effectFixtureIds || [])
+  return {
+    ...raw,
+    version: '2.0',
+    fixtures: raw.fixtures.map(f => ({
+      id: f.id,
+      dim: 254,
+      r: f.r, g: f.g, b: f.b,
+      effect:       effectIds.has(f.id) ? (raw.effect || null) : null,
+      effectParams: effectIds.has(f.id) ? (raw.effectParams || {}) : {},
+    })),
+    effect: undefined,
+    effectParams: undefined,
+    effectFixtureIds: undefined,
+  }
+}
 import { join }        from 'path'
 import { readFileSync, writeFileSync, readdirSync, existsSync, mkdirSync, unlinkSync } from 'fs'
 import { SerialBridge } from './serial-bridge'
@@ -77,7 +96,7 @@ ipcMain.handle('file:load-scenes', () => {
   return readdirSync(dir)
     .filter(f => f.endsWith('.json'))
     .map(f => {
-      try { return JSON.parse(readFileSync(join(dir, f), 'utf-8')) }
+      try { return migrateScene(JSON.parse(readFileSync(join(dir, f), 'utf-8'))) }
       catch { return null }
     })
     .filter(Boolean)

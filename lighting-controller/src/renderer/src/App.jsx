@@ -25,6 +25,7 @@ export default function App() {
   const setEffectEngine    = useStore(s => s.setEffectEngine)
   const setFixtureColor    = useStore(s => s.setFixtureColor)
   const setFixtureDimmer   = useStore(s => s.setFixtureDimmer)
+  const clearAllEffects    = useStore(s => s.clearAllEffects)
   const toggleBlackout     = useStore(s => s.toggleBlackout)
   const goNextCue          = useStore(s => s.goNextCue)
   const goPrevCue          = useStore(s => s.goPrevCue)
