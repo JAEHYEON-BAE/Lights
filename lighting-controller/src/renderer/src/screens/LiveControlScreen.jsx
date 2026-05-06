@@ -11,9 +11,12 @@ function FixtureTile({ fixture }) {
   const setFixtureColor = useStore(s => s.setFixtureColor)
   const [open, setOpen] = useState(false)
 
-  const { r = 0, g = 0, b = 0 } = fixtureState[fixture.id] || {}
-  const hex = rgbToHex(r, g, b)
-  const dim = r + g + b
+  const { r = 0, g = 0, b = 0, d = 254 } = fixtureState[fixture.id] || {}
+  const dr = Math.round(r * d / 254)
+  const dg = Math.round(g * d / 254)
+  const db = Math.round(b * d / 254)
+  const hex = rgbToHex(dr, dg, db)
+  const dim = dr + dg + db
   const textColor = dim > 200 ? '#000' : '#fff'
 
   return (

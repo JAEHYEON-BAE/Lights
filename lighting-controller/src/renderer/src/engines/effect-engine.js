@@ -22,15 +22,13 @@ export const EFFECTS = {
   },
   sinePulse: {
     name: 'Sine Pulse',
-    defaultParams: { speed: 1, r: 0, g: 100, b: 255 },
+    defaultParams: { speed: 1, r: 0, g: 100, b: 255, phaseOffset: 0 },
     tick(fixtures, time, params) {
-      const brightness = (Math.sin(2 * Math.PI * (params.speed / 1000) * time) + 1) / 2
-      return fixtures.map(id => ({
-        id,
-        r: Math.round(params.r * brightness),
-        g: Math.round(params.g * brightness),
-        b: Math.round(params.b * brightness)
-      }))
+      return fixtures.map((id, idx) => {
+        const phase = (idx * params.phaseOffset * Math.PI) / 180
+        const brightness = (Math.sin(2 * Math.PI * (params.speed / 1000) * time + phase) + 1) / 2
+        return { id, r: Math.round(params.r * brightness), g: Math.round(params.g * brightness), b: Math.round(params.b * brightness) }
+      })
     }
   },
   colorWave: {
@@ -46,15 +44,16 @@ export const EFFECTS = {
   },
   strobe: {
     name: 'Strobe',
-    defaultParams: { speed: 8, r: 255, g: 255, b: 255 },
+    defaultParams: { speed: 8, phaseOffset: 0, r: 255, g: 255, b: 255 },
+    init(fixtures, params, setFixtureColor) {
+      fixtures.forEach(id => setFixtureColor(id, params.r, params.g, params.b))
+    },
     tick(fixtures, time, params) {
-      const on = Math.floor((time / 1000) * params.speed) % 2 === 0
-      return fixtures.map(id => ({
-        id,
-        r: on ? params.r : 0,
-        g: on ? params.g : 0,
-        b: on ? params.b : 0
-      }))
+      return fixtures.map((id, idx) => {
+        const shiftedTime = time + idx * params.phaseOffset
+        const on = Math.floor((shiftedTime / 1000) * params.speed) % 2 === 0
+        return { id, dimmer: on ? 254 : 0 }
+      })
     }
   },
   randomFlicker: {
@@ -77,8 +76,9 @@ export const EFFECTS = {
 }
 
 export class EffectEngine {
-  constructor(setFixtureColor) {
-    this.setFixtureColor = setFixtureColor
+  constructor(setFixtureColor, setFixtureDimmer) {
+    this.setFixtureColor  = setFixtureColor
+    this.setFixtureDimmer = setFixtureDimmer
     this.active = null
     this.ticker = null
     this.startTime = 0
@@ -88,11 +88,18 @@ export class EffectEngine {
     this.stop()
     const effect = EFFECTS[effectKey]
     if (!effect) return
+    if (effect.init) effect.init(fixtureIds, params, this.setFixtureColor)
     this.startTime = Date.now()
     this.ticker = setInterval(() => {
       const time = Date.now() - this.startTime
       const results = effect.tick(fixtureIds, time, params)
-      results.forEach(({ id, r, g, b }) => this.setFixtureColor(id, r, g, b))
+      results.forEach(result => {
+        if (result.dimmer !== undefined) {
+          this.setFixtureDimmer(result.id, result.dimmer)
+        } else {
+          this.setFixtureColor(result.id, result.r, result.g, result.b)
+        }
+      })
     }, 16)
     this.active = effectKey
   }

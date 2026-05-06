@@ -16,8 +16,8 @@ function dbg(...args) { if (DEBUG_SERIAL) console.log('[serial]', ...args) }
 export class SerialBridge extends EventEmitter {
   constructor() {
     super()
-    this.currentState = Array.from({ length: MAX_FIXTURES }, () => ({ r: 0, g: 0, b: 0 }))
-    this.pendingState = Array.from({ length: MAX_FIXTURES }, () => ({ r: 0, g: 0, b: 0 }))
+    this.currentState = Array.from({ length: MAX_FIXTURES }, () => ({ d: 254, r: 0, g: 0, b: 0 }))
+    this.pendingState = Array.from({ length: MAX_FIXTURES }, () => ({ d: 254, r: 0, g: 0, b: 0 }))
     this.dirtyFlags   = new Array(MAX_FIXTURES).fill(false)
     this.port         = null
     this.frameTimer   = null
@@ -76,14 +76,15 @@ export class SerialBridge extends EventEmitter {
     this.connected = false
   }
 
-  setFixture(id, r, g, b) {
+  setFixture(id, d = 254, r, g, b) {
     if (id < 0 || id >= MAX_FIXTURES) return
+    const cd = Math.max(0, Math.min(254, Math.round(d)))
     const cr = Math.max(0, Math.min(254, Math.round(r)))
     const cg = Math.max(0, Math.min(254, Math.round(g)))
     const cb = Math.max(0, Math.min(254, Math.round(b)))
     const p  = this.pendingState[id]
-    if (p.r !== cr || p.g !== cg || p.b !== cb) {
-      p.r = cr; p.g = cg; p.b = cb
+    if (p.d !== cd || p.r !== cr || p.g !== cg || p.b !== cb) {
+      p.d = cd; p.r = cr; p.g = cg; p.b = cb
       this.dirtyFlags[id] = true
     }
   }
@@ -125,15 +126,15 @@ export class SerialBridge extends EventEmitter {
     const packets = []
     for (let id = 0; id < MAX_FIXTURES; id++) {
       if (!this.dirtyFlags[id]) continue
-      const { r, g, b } = this.pendingState[id]
-      packets.push(START_BYTE, id, r, g, b)
-      this.currentState[id] = { r, g, b }
+      const { d, r, g, b } = this.pendingState[id]
+      packets.push(START_BYTE, id, d, r, g, b)
+      this.currentState[id] = { d, r, g, b }
       this.dirtyFlags[id]   = false
     }
     if (packets.length > 0) {
       if (DEBUG_SERIAL) {
-        for (let i = 0; i < packets.length; i += 5) {
-          dbg(`fixture ${packets[i+1].toString().padStart(2)}  → R:${packets[i+2].toString().padStart(3)} G:${packets[i+3].toString().padStart(3)} B:${packets[i+4].toString().padStart(3)}`)
+        for (let i = 0; i < packets.length; i += 6) {
+          dbg(`fixture ${packets[i+1].toString().padStart(2)}  → D:${packets[i+2].toString().padStart(3)} R:${packets[i+3].toString().padStart(3)} G:${packets[i+4].toString().padStart(3)} B:${packets[i+5].toString().padStart(3)}`)
         }
       }
       this.port.write(Buffer.from(packets))

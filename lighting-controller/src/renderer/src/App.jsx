@@ -24,6 +24,7 @@ export default function App() {
   const setFadeEngine      = useStore(s => s.setFadeEngine)
   const setEffectEngine    = useStore(s => s.setEffectEngine)
   const setFixtureColor    = useStore(s => s.setFixtureColor)
+  const setFixtureDimmer   = useStore(s => s.setFixtureDimmer)
   const toggleBlackout     = useStore(s => s.toggleBlackout)
   const goNextCue          = useStore(s => s.goNextCue)
   const goPrevCue          = useStore(s => s.goPrevCue)
@@ -35,7 +36,7 @@ export default function App() {
     const fadeEng = new FadeEngine(setFixtureColor)
     setFadeEngine(fadeEng)
 
-    const effectEng = new EffectEngine(setFixtureColor)
+    const effectEng = new EffectEngine(setFixtureColor, setFixtureDimmer)
     effectEngineRef.current = effectEng
     setEffectEngine(effectEng)
 

@@ -22,14 +22,21 @@ const useStore = create((set, get) => ({
   loadFixtures: (data) => {
     if (!data) return
     const state = {}
-    data.fixtures.forEach(f => { state[f.id] = { r: 0, g: 0, b: 0 } })
+    data.fixtures.forEach(f => { state[f.id] = { d: 254, r: 0, g: 0, b: 0 } })
     set({ fixtures: data.fixtures, groups: data.groups || [], fixtureState: state })
   },
 
   setFixtureColor: (id, r, g, b) => {
-    const dimmer = get().masterDimmer
-    set(s => ({ fixtureState: { ...s.fixtureState, [id]: { r, g, b } } }))
-    window.api.setFixture(id, Math.round(r * dimmer), Math.round(g * dimmer), Math.round(b * dimmer))
+    const d = Math.round(get().masterDimmer * 254)
+    set(s => ({ fixtureState: { ...s.fixtureState, [id]: { d, r, g, b } } }))
+    window.api.setFixture(id, d, r, g, b)
+  },
+
+  setFixtureDimmer: (id, d) => {
+    const clamped = Math.max(0, Math.min(254, Math.round(d)))
+    set(s => ({ fixtureState: { ...s.fixtureState, [id]: { ...s.fixtureState[id], d: clamped } } }))
+    const c = get().fixtureState[id] || { r: 0, g: 0, b: 0 }
+    window.api.setFixture(id, clamped, c.r, c.g, c.b)
   },
 
   setGroupColor: (groupId, r, g, b) => {
@@ -54,11 +61,12 @@ const useStore = create((set, get) => ({
   masterDimmer: 1.0,
 
   setMasterDimmer: (value) => {
+    const d = Math.round(value * 254)
     set({ masterDimmer: value })
     const { fixtures, fixtureState } = get()
     fixtures.forEach(f => {
       const c = fixtureState[f.id] || { r: 0, g: 0, b: 0 }
-      window.api.setFixture(f.id, Math.round(c.r * value), Math.round(c.g * value), Math.round(c.b * value))
+      window.api.setFixture(f.id, d, c.r, c.g, c.b)
     })
   },
 

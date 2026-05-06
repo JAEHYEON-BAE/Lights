@@ -7,7 +7,7 @@ contextBridge.exposeInMainWorld('api', {
   stopSimulate:   ()             => ipcRenderer.invoke('serial:stop-simulate'),
   connect:     (port)         => ipcRenderer.invoke('serial:connect', port),
   disconnect:  ()             => ipcRenderer.invoke('serial:disconnect'),
-  setFixture:  (id, r, g, b) => ipcRenderer.invoke('serial:set-fixture', id, r, g, b),
+  setFixture:  (id, d, r, g, b) => ipcRenderer.invoke('serial:set-fixture', id, d, r, g, b),
   setBlackout: (active)       => ipcRenderer.invoke('serial:set-blackout', active),
   reset:       ()             => ipcRenderer.invoke('serial:reset'),
   isConnected: ()             => ipcRenderer.invoke('serial:is-connected'),

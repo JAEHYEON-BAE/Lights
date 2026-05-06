@@ -5,7 +5,7 @@
  * Both use the same ATmega2560 interrupt vector (__vector_25), causing a linker error
  * if the Conceptinetics library and HardwareSerial are compiled together.
  *
- * Packet format (PC → Arduino): [0xFF][fixture_id][R][G][B]
+ * Packet format (PC → Arduino): [0xFF][fixture_id][D][R][G][B]
  * Special IDs:  0xFE = BLACKOUT ALL,  0xFD = RESET
  * Heartbeat    (Arduino → PC):  [0xAA][0x01][dmx_running][pkt_count][err_count][0][0][0]
  *
@@ -130,31 +130,31 @@ void blackoutAll() {
   memset(dmxBuffer, 0, sizeof(dmxBuffer));
 }
 
-void setFixture(uint8_t id, uint8_t r, uint8_t g, uint8_t b) {
+void setFixture(uint8_t id, uint8_t d, uint8_t r, uint8_t g, uint8_t b) {
   if (id >= MAX_FIXTURES) return;
   uint16_t base = fixtureMap[id];
   if (base == 0 || base + (CHANNELS_PER_FIX - 1) > DMX_CHANNELS) return;
-  setChannelValue(base + CH_DIMMER, 255);  // full brightness; PC already scales RGB by dimmer
+  setChannelValue(base + CH_DIMMER, d);
   setChannelValue(base + CH_RED,    r);
   setChannelValue(base + CH_GREEN,  g);
   setChannelValue(base + CH_BLUE,   b);
   setChannelValue(base + CH_STROBE, 0);
   setChannelValue(base + CH_MODE,   0);
   setChannelValue(base + CH_SPEED,  0);
-  // CH_STROBE, CH_MODE, CH_SPEED left at 0 (static color, no strobe)
 }
 
 // ── Parser State Machine ──────────────────────────────────────────────────────
 typedef enum {
   STATE_WAIT_START = 0,
   STATE_READ_ID,
+  STATE_READ_DIMMER,
   STATE_READ_R,
   STATE_READ_G,
   STATE_READ_B
 } ParserState;
 
 ParserState parserState = STATE_WAIT_START;
-uint8_t     pkt_id = 0, pkt_r = 0, pkt_g = 0;
+uint8_t     pkt_id = 0, pkt_d = 0, pkt_r = 0, pkt_g = 0;
 uint32_t    packetCount = 0, errorCount = 0, lastHeartbeat = 0;
 
 void sendHeartbeat() {
@@ -182,7 +182,12 @@ void parseSerial() {
         if (b == 0xFF) { errorCount++; parserState = STATE_READ_ID; }
         else if (b == 0xFE) { blackoutAll(); parserState = STATE_WAIT_START; packetCount++; }
         else if (b == 0xFD) { dmxDisable(); delay(10); dmxEnable(); parserState = STATE_WAIT_START; }
-        else { pkt_id = b; parserState = STATE_READ_R; }
+        else { pkt_id = b; parserState = STATE_READ_DIMMER; }
+        break;
+
+      case STATE_READ_DIMMER:
+        if (b == 0xFF) { errorCount++; parserState = STATE_READ_ID; }
+        else { pkt_d = b; parserState = STATE_READ_R; }
         break;
 
       case STATE_READ_R:
@@ -197,7 +202,7 @@ void parseSerial() {
 
       case STATE_READ_B:
         if (b == 0xFF) { errorCount++; parserState = STATE_READ_ID; }
-        else { setFixture(pkt_id, pkt_r, pkt_g, b); packetCount++; parserState = STATE_WAIT_START; }
+        else { setFixture(pkt_id, pkt_d, pkt_r, pkt_g, b); packetCount++; parserState = STATE_WAIT_START; }
         break;
     }
   }

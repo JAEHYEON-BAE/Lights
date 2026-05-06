@@ -2,12 +2,12 @@ import React from 'react'
 import useStore from '../store'
 
 function FixtureLight({ fixture, size = 38, coneHeight = 90 }) {
-  const { r = 0, g = 0, b = 0 } = useStore(s => s.fixtureState[fixture.id] || { r: 0, g: 0, b: 0 })
+  const { r = 0, g = 0, b = 0, d = 254 } = useStore(s => s.fixtureState[fixture.id] || { d: 254, r: 0, g: 0, b: 0 })
   const blackout = useStore(s => s.blackoutActive)
 
-  const dr = blackout ? 0 : r
-  const dg = blackout ? 0 : g
-  const db = blackout ? 0 : b
+  const dr = blackout ? 0 : Math.round(r * d / 254)
+  const dg = blackout ? 0 : Math.round(g * d / 254)
+  const db = blackout ? 0 : Math.round(b * d / 254)
   const on = dr > 0 || dg > 0 || db > 0
 
   return (
