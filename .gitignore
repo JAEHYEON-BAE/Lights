@@ -6,6 +6,10 @@ lighting-controller/node_modules/
 lighting-controller/out/
 lighting-controller/dist/
 
+# resource files
+lighting-controller/resources/*
+
+
 # macOS system file
 .DS_Store
 
@@ -22,3 +26,4 @@ CLAUDE.md
 .mv_*
 
 venv/
+
