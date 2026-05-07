@@ -23,8 +23,16 @@ Or browse all releases: [Releases page](https://github.com/JAEHYEON-BAE/Lights/r
 ### macOS
 1. Download the `.dmg` file above.
 2. Open the `.dmg` and drag **Lighting Controller** to your Applications folder.
-3. On first launch, if macOS shows an "unidentified developer" warning:  
-   **Right-click** the app → **Open** → **Open** again to confirm.
+3. On first launch, macOS may block the app because it is not signed with an Apple Developer certificate. Follow the steps below based on the error message you see:
+
+**"Unidentified developer" warning:**  
+Right-click the app → **Open** → **Open** again to confirm.
+
+**"Damaged and can't be opened" error (macOS Ventura / Sonoma):**  
+Run the following command in Terminal, then try launching the app again:
+```bash
+xattr -cr /Applications/Lighting\ Controller.app
+```
 
 ### Windows
 1. Download the `.exe` installer above.
