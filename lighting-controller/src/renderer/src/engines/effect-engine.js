@@ -47,11 +47,17 @@ export const EFFECTS = {
   },
   colorWave: {
     name: 'Color Wave',
-    defaultParams: { speed: 0.5, phaseOffset: 30 },
+    defaultParams: { speed: 0.5, phaseOffset: 30, hue1: 180, hue2: 270, direction: 'short' },
     tick(fixtures, time, params) {
       const freq = params.speed / 1000
+      const cwDelta = ((params.hue2 - params.hue1) % 360 + 360) % 360
+      const delta = params.direction === 'short'
+        ? (cwDelta <= 180 ? cwDelta : cwDelta - 360)
+        : (cwDelta <= 180 ? cwDelta - 360 : cwDelta)
       return fixtures.map((id, idx) => {
-        const hue = ((freq * time * 360 + idx * params.phaseOffset) % 360 + 360) % 360
+        const phase = freq * time * Math.PI * 2 + idx * (params.phaseOffset * Math.PI / 180)
+        const t = (Math.sin(phase) + 1) / 2
+        const hue = ((params.hue1 + delta * t) % 360 + 360) % 360
         return { id, ...hsvToRgb(hue, 1.0, 1.0) }
       })
     }

@@ -228,6 +228,40 @@ export default function EffectEngineScreen({ effectEngine }) {
             </div>
           )}
 
+          {/* Hue Range (colorWave) */}
+          {'hue1' in params && (
+            <div>
+              <label className="text-xs text-gray-500 block mb-2">Color Range</label>
+              {[['Color 1', 'hue1'], ['Color 2', 'hue2']].map(([label, key]) => (
+                <div key={key} className="flex items-center gap-3 mb-2">
+                  <div className="w-8 h-6 rounded border border-surface-600 flex-shrink-0"
+                    style={{ background: `hsl(${params[key]},100%,50%)` }} />
+                  <div className="flex-1">
+                    <label className="text-xs text-gray-500 block mb-0.5">{label}: {params[key]}°</label>
+                    <input type="range" min="0" max="359" step="1"
+                      value={params[key]}
+                      style={{ background: 'linear-gradient(to right,hsl(0,100%,50%),hsl(60,100%,50%),hsl(120,100%,50%),hsl(180,100%,50%),hsl(240,100%,50%),hsl(300,100%,50%),hsl(360,100%,50%))' }}
+                      onChange={e => setParam(key, +e.target.value)}
+                      className="w-full" />
+                  </div>
+                </div>
+              ))}
+              {'direction' in params && (
+                <div className="flex gap-2 mt-1">
+                  {[['short', 'Short path'], ['long', 'Long path']].map(([val, label]) => (
+                    <button key={val} onClick={() => setParam('direction', val)}
+                      className={`px-3 py-1 rounded-lg text-xs transition-colors
+                        ${params.direction === val
+                          ? 'bg-accent-blue text-white'
+                          : 'bg-surface-700 text-gray-400 hover:bg-surface-600'}`}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Color */}
           {'r' in params && (
             <div>
