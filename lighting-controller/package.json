@@ -30,7 +30,7 @@
     "productName": "Lighting Controller",
     "directories": { "output": "release" },
     "extraResources": [
-      { "from": "resources", "to": "resources" }
+      { "from": "resources-default", "to": "resources-default" }
     ],
     "mac": { "target": "dmg" },
     "win": { "target": "nsis" }

@@ -5,6 +5,10 @@ lighting-controller/node_modules/
 # build results
 lighting-controller/out/
 lighting-controller/dist/
+lighting-controller/release/
+
+# developer-local data (defaults live in resources-default/)
+lighting-controller/resources/
 
 
 # macOS system file

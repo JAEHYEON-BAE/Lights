@@ -19,7 +19,7 @@ function migrateScene(raw) {
   }
 }
 import { join }        from 'path'
-import { readFileSync, writeFileSync, readdirSync, existsSync, mkdirSync, unlinkSync } from 'fs'
+import { readFileSync, writeFileSync, readdirSync, existsSync, mkdirSync, unlinkSync, cpSync } from 'fs'
 import { SerialBridge } from './serial-bridge'
 
 const bridge = new SerialBridge()
@@ -75,9 +75,23 @@ ipcMain.handle('serial:is-connected', ()                => bridge.connected)
 
 // ── File IPC ─────────────────────────────────────────────────────────────────
 
-const resourcesDir = app.isPackaged
-  ? join(process.resourcesPath, 'resources')
-  : join(__dirname, '../../resources')
+const resourcesDir = (() => {
+  if (!app.isPackaged) {
+    const devDir = join(__dirname, '../../resources')
+    if (existsSync(devDir)) return devDir
+    // Fallback for developers who just cloned the repo
+    return join(__dirname, '../../resources-default')
+  }
+
+  const userDir     = join(app.getPath('userData'), 'resources')
+  const defaultsDir = join(process.resourcesPath, 'resources-default')
+
+  if (!existsSync(userDir)) {
+    cpSync(defaultsDir, userDir, { recursive: true })
+  }
+
+  return userDir
+})()
 
 function ensureDir(dir) {
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
