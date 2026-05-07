@@ -1,0 +1,120 @@
+{
+  "version": "2.0",
+  "scene_id": "scene_1778081479112",
+  "name": "random flicker",
+  "fade_in_ms": 0,
+  "fixtures": [
+    {
+      "id": 0,
+      "dim": 254,
+      "r": 255,
+      "g": 180,
+      "b": 60,
+      "effect": "randomFlicker",
+      "effectParams": {
+        "speed": 5,
+        "r": 255,
+        "g": 180,
+        "b": 60
+      }
+    },
+    {
+      "id": 1,
+      "dim": 254,
+      "r": 128,
+      "g": 90,
+      "b": 30,
+      "effect": "randomFlicker",
+      "effectParams": {
+        "speed": 5,
+        "r": 255,
+        "g": 180,
+        "b": 60
+      }
+    },
+    {
+      "id": 2,
+      "dim": 254,
+      "r": 255,
+      "g": 180,
+      "b": 60,
+      "effect": "randomFlicker",
+      "effectParams": {
+        "speed": 5,
+        "r": 255,
+        "g": 180,
+        "b": 60
+      }
+    },
+    {
+      "id": 3,
+      "dim": 254,
+      "r": 128,
+      "g": 90,
+      "b": 30,
+      "effect": "randomFlicker",
+      "effectParams": {
+        "speed": 5,
+        "r": 255,
+        "g": 180,
+        "b": 60
+      }
+    },
+    {
+      "id": 4,
+      "dim": 254,
+      "r": 255,
+      "g": 180,
+      "b": 60,
+      "effect": "randomFlicker",
+      "effectParams": {
+        "speed": 5,
+        "r": 255,
+        "g": 180,
+        "b": 60
+      }
+    },
+    {
+      "id": 5,
+      "dim": 254,
+      "r": 255,
+      "g": 180,
+      "b": 60,
+      "effect": "randomFlicker",
+      "effectParams": {
+        "speed": 5,
+        "r": 255,
+        "g": 180,
+        "b": 60
+      }
+    },
+    {
+      "id": 6,
+      "dim": 254,
+      "r": 26,
+      "g": 18,
+      "b": 6,
+      "effect": "randomFlicker",
+      "effectParams": {
+        "speed": 5,
+        "r": 255,
+        "g": 180,
+        "b": 60
+      }
+    },
+    {
+      "id": 7,
+      "dim": 254,
+      "r": 255,
+      "g": 180,
+      "b": 60,
+      "effect": "randomFlicker",
+      "effectParams": {
+        "speed": 5,
+        "r": 255,
+        "g": 180,
+        "b": 60
+      }
+    }
+  ]
+}
