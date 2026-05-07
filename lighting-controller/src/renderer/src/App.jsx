@@ -10,6 +10,7 @@ import SceneBrowserScreen  from './screens/SceneBrowserScreen'
 import CueListScreen       from './screens/CueListScreen'
 import EffectEngineScreen  from './screens/EffectEngineScreen'
 import SettingsScreen      from './screens/SettingsScreen'
+import FixtureEditorScreen from './screens/FixtureEditorScreen'
 
 export default function App() {
   const activeScreen       = useStore(s => s.activeScreen)
@@ -73,6 +74,7 @@ export default function App() {
     live:     <EffectEngineScreen effectEngine={effectEngineRef} />,
     scenes:   <SceneBrowserScreen />,
     cues:     <CueListScreen />,
+    fixtures: <FixtureEditorScreen />,
     settings: <SettingsScreen />,
   }
 
@@ -85,7 +87,7 @@ export default function App() {
           <div className="flex-1 overflow-auto p-4">
             {screens[activeScreen]}
           </div>
-          {activeScreen !== 'settings' && (
+          {activeScreen !== 'settings' && activeScreen !== 'fixtures' && (
             <div className="w-56 flex-shrink-0 flex flex-col gap-3 p-3 border-l border-surface-700 overflow-y-auto">
               <StageVisualizer compact />
             </div>

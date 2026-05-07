@@ -29,4 +29,5 @@ contextBridge.exposeInMainWorld('api', {
   deleteScene:  (id)   => ipcRenderer.invoke('file:delete-scene', id),
   loadCueList:  ()     => ipcRenderer.invoke('file:load-cueList'),
   saveCueList:  (cl)   => ipcRenderer.invoke('file:save-cueList', cl),
+  saveFixtures: (data) => ipcRenderer.invoke('file:save-fixtures', data),
 })

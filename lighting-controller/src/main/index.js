@@ -90,6 +90,12 @@ ipcMain.handle('file:load-fixtures', (_, filePath) => {
   } catch { return null }
 })
 
+ipcMain.handle('file:save-fixtures', (_, data) => {
+  ensureDir(resourcesDir)
+  writeFileSync(join(resourcesDir, 'fixtures.json'), JSON.stringify(data, null, 2))
+  return true
+})
+
 ipcMain.handle('file:load-scenes', () => {
   const dir = join(resourcesDir, 'scenes')
   ensureDir(dir)

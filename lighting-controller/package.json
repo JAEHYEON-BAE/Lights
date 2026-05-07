@@ -29,6 +29,9 @@
     "appId": "com.lights.controller",
     "productName": "Lighting Controller",
     "directories": { "output": "release" },
+    "extraResources": [
+      { "from": "resources", "to": "resources" }
+    ],
     "mac": { "target": "dmg" },
     "win": { "target": "nsis" }
   }

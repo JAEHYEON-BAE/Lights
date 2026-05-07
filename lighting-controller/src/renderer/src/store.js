@@ -46,6 +46,17 @@ const useStore = create((set, get) => ({
     set({ fixtures: data.fixtures, groups: data.groups || [], fixtureState: state })
   },
 
+  saveFixtures: async (data) => {
+    await window.api.saveFixtures(data)
+    set(s => {
+      const next = {}
+      data.fixtures.forEach(f => {
+        next[f.id] = s.fixtureState[f.id] ?? { d: 254, r: 0, g: 0, b: 0 }
+      })
+      return { fixtures: data.fixtures, groups: data.groups ?? [], fixtureState: next }
+    })
+  },
+
   setFixtureColor: (id, r, g, b) => {
     const d = Math.round(get().masterDimmer * 254)
     set(s => ({ fixtureState: { ...s.fixtureState, [id]: { d, r, g, b } } }))
