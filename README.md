@@ -11,8 +11,8 @@ Controls up to 32 RGB DMX fixtures via USB serial through an Arduino Mega.
 
 | Platform | File | 
 |---|---|
-| macOS (Apple Silicon) | [Lighting Controller-1.0.0-arm64.dmg](https://github.com/JAEHYEON-BAE/Lights/releases/download/v1.0.0/Lighting%20Controller-1.0.0-arm64.dmg) |
-| Windows | [Lighting Controller Setup 1.0.0.exe](https://github.com/JAEHYEON-BAE/Lights/releases/download/v1.0.0/Lighting%20Controller%20Setup%201.0.0.exe) |
+| macOS (Apple Silicon) | [Lighting Controller-1.0.1-arm64.dmg](https://github.com/JAEHYEON-BAE/Lights/releases/download/v1.0.1/Lighting.Controller-1.0.1-arm64.dmg) |
+| Windows | [Lighting Controller Setup 1.0.1.exe](https://github.com/JAEHYEON-BAE/Lights/releases/download/v1.0.1/Lighting.Controller.Setup.1.0.1.exe) |
 
 Or browse all releases: [Releases page](https://github.com/JAEHYEON-BAE/Lights/releases)
 
