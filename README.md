@@ -7,7 +7,7 @@ Controls up to 32 RGB DMX fixtures via USB serial through an Arduino Mega.
 
 ## Download
 
-> **Latest release: v1.0.0**
+> **Latest release: v1.0.1**
 
 | Platform | File | 
 |---|---|
