@@ -1,5 +1,102 @@
 {
   "version": "1.0",
-  "fixtures": [],
+  "fixtures": [
+    {
+      "id": 0,
+      "name": "Stage Left 1",
+      "type": "rgb_par_7ch",
+      "dmx_base": 1,
+      "channels": {
+        "dimmer": 0,
+        "red": 1,
+        "green": 2,
+        "blue": 3,
+        "strobe": 4,
+        "mode": 5,
+        "speed": 6
+      },
+      "group": "stage_left"
+    },
+    {
+      "id": 1,
+      "name": "Stage Left 2",
+      "type": "rgb_par_7ch",
+      "dmx_base": 8,
+      "channels": {
+        "dimmer": 0,
+        "red": 1,
+        "green": 2,
+        "blue": 3,
+        "strobe": 4,
+        "mode": 5,
+        "speed": 6
+      },
+      "group": "stage_left"
+    },
+    {
+      "id": 2,
+      "name": "Stage Left 3",
+      "type": "rgb_par_7ch",
+      "dmx_base": 15,
+      "channels": {
+        "dimmer": 0,
+        "red": 1,
+        "green": 2,
+        "blue": 3,
+        "strobe": 4,
+        "mode": 5,
+        "speed": 6
+      },
+      "group": "stage_left"
+    },
+    {
+      "id": 3,
+      "name": "Stage Right 1",
+      "type": "rgb_par_7ch",
+      "dmx_base": 22,
+      "channels": {
+        "dimmer": 0,
+        "red": 1,
+        "green": 2,
+        "blue": 3,
+        "strobe": 4,
+        "mode": 5,
+        "speed": 6
+      },
+      "group": "stage_right"
+    },
+    {
+      "id": 4,
+      "name": "Stage Right 2",
+      "type": "rgb_par_7ch",
+      "dmx_base": 29,
+      "channels": {
+        "dimmer": 0,
+        "red": 1,
+        "green": 2,
+        "blue": 3,
+        "strobe": 4,
+        "mode": 5,
+        "speed": 6
+      },
+      "group": "stage_right"
+    },
+    {
+      "id": 5,
+      "name": "Stage Right 3",
+      "type": "rgb_par_7ch",
+      "dmx_base": 36,
+      "channels": {
+        "dimmer": 0,
+        "red": 1,
+        "green": 2,
+        "blue": 3,
+        "strobe": 4,
+        "mode": 5,
+        "speed": 6
+      },
+      "group": "stage_right"
+    }
+  ],
   "groups": []
 }
