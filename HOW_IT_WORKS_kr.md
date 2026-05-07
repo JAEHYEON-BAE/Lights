@@ -31,31 +31,31 @@ Lights/
 │       ├── fixtures.json         ← 조명 기기 정의
 │       ├── cue-list.json         ← 저장된 공연 cue list
 │       └── scenes/               ← 저장된 scene당 하나의 JSON 파일
-└── standalone_lighting_control_pipeline.md   ← 설계 참조 문서
 ```
 
 ---
-## The Arduino Firmware (`arduino/lighting_controller.ino`)
+## The Arduino Firmware (`arduino/lighting_controller/lighting_controller.ino`)
 
 Arduino Mega 2560에 플래시되는 firmware입니다.
 
 ### What it does
 
-1. PC로부터 USB를 통해 115200 baud로 **5바이트 패킷을 수신**합니다.
+1. PC로부터 USB를 통해 115200 baud로 **6바이트 패킷을 수신**합니다.
 2. `fixtureMap` 조회 테이블을 사용하여 **각 패킷을 DMX channel 쓰기로 변환**합니다.
 3. PC가 Arduino의 상태를 알 수 있도록 매 초마다 **heartbeat를 PC로 전송**합니다.
 
 ### The serial packet format
 
-PC가 전송하는 모든 색상 명령은 정확히 5바이트입니다:
+PC가 전송하는 모든 색상 명령은 정확히 6바이트입니다:
 
 ```
-[0xFF] [fixture_id] [R] [G] [B]
+[0xFF] [fixture_id] [D] [R] [G] [B]
 ```
 
 - `0xFF`는 Arduino에게 "새 패킷이 시작된다"는 것을 알리는 시작 마커입니다.
 - `fixture_id`는 0–31 범위로, 업데이트할 조명을 식별합니다.
-- `R`, `G`, `B`는 0–255 범위의 밝기 값입니다.
+- `D`는 개별 디머 값으로 0–254 범위입니다.
+- `R`, `G`, `B`는 0–255 범위의 색상 값입니다.
 
 두 가지 특수 `fixture_id` 값이 존재합니다:
 - `0xFE` → **Blackout**: 모든 DMX channel을 즉시 0으로 설정합니다.
@@ -63,19 +63,19 @@ PC가 전송하는 모든 색상 명령은 정확히 5바이트입니다:
 
 ### The parser state machine
 
-Arduino는 `loop()`에서 바이트를 하나씩 읽습니다. 간단한 state machine (`STATE_WAIT_START` → `STATE_READ_ID` → `STATE_READ_R` → `STATE_READ_G` → `STATE_READ_B`)이 각 패킷을 조립합니다. 예상치 못한 위치에서 `0xFF`를 만나면(패킷이 손상된 경우) 새 시작 바이트로 처리하여 재동기화합니다.
+Arduino는 `loop()`에서 바이트를 하나씩 읽습니다. 간단한 state machine (`STATE_WAIT_START` → `STATE_READ_ID` → `STATE_READ_DIMMER` → `STATE_READ_R` → `STATE_READ_G` → `STATE_READ_B`)이 각 패킷을 조립합니다. 예상치 못한 위치에서 `0xFF`를 만나면(패킷이 손상된 경우) 새 시작 바이트로 처리하여 재동기화합니다.
 
 ### The fixture map
 
 ```cpp
 uint16_t fixtureMap[MAX_FIXTURES] = {
-  1,  // Fixture 0 → DMX channels 1, 2, 3
-  4,  // Fixture 1 → DMX channels 4, 5, 6
+  1,  // Fixture 0 → DMX channels 1–7
+  8,  // Fixture 1 → DMX channels 8–14
   ...
 };
 ```
 
-이 테이블은 논리적인 fixture ID(0–31)를 DMX base channel로 매핑합니다. 각 RGB 조명 기기는 3개의 연속 channel을 사용합니다. **이 테이블은 PC 측의 `resources/fixtures.json`과 반드시 일치해야 합니다** — 이 둘은 동일한 fixture 정의의 두 반쪽입니다.
+이 테이블은 논리적인 fixture ID(0–31)를 DMX base channel로 매핑합니다. 각 fixture는 7개의 연속 channel을 사용합니다(dimmer, red, green, blue, strobe, mode, speed). **이 테이블은 PC 측의 `resources/fixtures.json`과 반드시 일치해야 합니다** — 이 둘은 동일한 fixture 정의의 두 반쪽입니다.
 
 ### The heartbeat
 
@@ -149,7 +149,7 @@ Serial actions:  listPorts, startSimulate, stopSimulate, connect, disconnect,
                  setFixture, setBlackout, reset, isConnected
 Serial events:   onConnected, onDisconnected, onError, onHeartbeat,
                  onHeartbeatTimeout, onBlackout
-File actions:    loadFixtures, loadScenes, saveScene, deleteScene,
+File actions:    loadFixtures, saveFixtures, loadScenes, saveScene, deleteScene,
                  loadCueList, saveCueList
 ```
 
@@ -164,7 +164,7 @@ File actions:    loadFixtures, loadScenes, saveScene, deleteScene,
 
 `App.jsx`는 루트 컴포넌트입니다. 시작 시 세 가지 중요한 작업을 수행합니다:
 
-1. **엔진 생성** — `FadeEngine`과 `EffectEngine`이 여기서 인스턴스화되고 앱 언마운트 시 소멸됩니다.
+1. **엔진 생성** — `FadeEngine`과 `EffectEngine`이 여기서 인스턴스화되고 앱 언마운트 시 소멸됩니다. `EffectEngine`은 `useRef`(props로 `EffectEngineScreen`에 전달)와 Zustand store(`setEffectEngine`을 통해) 양쪽에 모두 저장됩니다. store에 저장하는 이유는 `recallScene` 같은 store action이 직접 effect를 트리거할 수 있어야 하기 때문입니다.
 2. **초기 데이터 로드** — 시작 시 한 번 `window.api.loadFixtures()`, `window.api.loadScenes()`, `window.api.loadCueList()`를 호출하여 Zustand store를 채웁니다.
 3. **시리얼 이벤트 리스너 등록** — `onConnected`, `onDisconnected`, `onHeartbeat`, `onHeartbeatTimeout`을 수신하여 store로 라우팅합니다.
 
@@ -173,7 +173,7 @@ File actions:    loadFixtures, loadScenes, saveScene, deleteScene,
 - `Enter` → 다음 cue로 이동
 - `Backspace` → 이전 cue로 이동
 
-레이아웃 구조: 왼쪽에 `<Sidebar>`, 상단에 `<StatusBar>`, 그리고 `store.activeScreen` 값에 따라 메인 영역에 5개 화면 중 하나가 표시됩니다.
+레이아웃 구조: 왼쪽에 `<Sidebar>`, 상단에 `<StatusBar>`, 메인 영역에 5개 화면 중 하나, 오른쪽에 `<StageVisualizer>` 패널(`settings`와 `fixtures` 화면에서는 숨겨짐), 우측 가장자리에 `<BlackoutButton>` 오버레이.
 
 ---
 ## State Management (`src/renderer/src/store.js`)
@@ -185,23 +185,25 @@ store는 다음 섹션으로 나뉩니다:
 | 섹션 | 보유 내용 |
 |---|---|
 | **Connection** | `connected`, `connectedPort`, `simulateMode`, `heartbeat`, `heartbeatTimeout` |
-| **Fixtures** | `fixtures`(정의), `fixtureState`(현재 색상, `{[id]: {r,g,b}}` 형태) |
+| **Fixtures** | `fixtures`(정의), `fixtureState`(현재 색상, `{[id]: {d,r,g,b}}` 형태) |
 | **Groups** | fixtures.json에서 로드된 group 정의 |
 | **Blackout** | `blackoutActive` flag |
 | **Master Dimmer** | `masterDimmer`(0.0–1.0 배율) |
 | **Scenes** | `scenes` 배열, `activeSceneId` |
 | **Cue List** | `cueList` 객체, `currentCueIndex` |
-| **Engines** | `fadeEngine` 참조 |
-| **Active Effect** | `activeEffect`, `effectParams` |
+| **Engines** | `fadeEngine` 참조, `effectEngine` 참조 |
+| **Per-fixture Effects** | `fixtureEffects` (`{[fixtureId]: {effectKey, params}}`) |
 | **UI** | `activeScreen`(5개 화면 중 표시 중인 화면) |
 
 ### The central write path
 
 `setFixtureColor(id, r, g, b)`는 조명 색상을 바꾸고 싶은 앱의 모든 부분에서 호출됩니다. 이 함수는:
-1. React의 `fixtureState`를 업데이트합니다(UI가 다시 렌더링됨).
+1. React의 `fixtureState`를 업데이트합니다. 현재 master dimmer를 0–254 범위로 환산한 `d` 값과 함께 `{d, r, g, b}`로 저장됩니다.
 2. `window.api.setFixture(id, r*dimmer, g*dimmer, b*dimmer)`를 호출하여 명령을 main process로 전송합니다(Arduino로 전달됨).
 
-**master dimmer**는 이 시점에 적용됩니다. store는 "실제" 색상을 저장하지만, dimmer가 적용된 색상만 Arduino로 전송됩니다.
+`setFixtureDimmer(id, d)`는 fixture의 RGB 색상을 변경하지 않고 개별 디머 channel만 업데이트합니다.
+
+**master dimmer**는 `setFixtureColor` 호출 시점에 적용됩니다. store는 "실제" 색상을 저장하지만, dimmer가 적용된 색상만 Arduino로 전송됩니다.
 
 ---
 ## The Engines
@@ -218,11 +220,14 @@ store는 다음 섹션으로 나뉩니다:
 
 각 effect는 순수한 `tick(fixtures, time, params)` 함수로 정의됩니다 — fixture ID 목록, 경과 시간(밀리초), 파라미터가 주어지면 `{id, r, g, b}` 결과 배열을 반환합니다. 엔진은 매 tick마다 이 결과로 `setFixtureColor`를 호출합니다.
 
+이전의 그룹 단위 effect 방식과 달리, 엔진은 이제 **fixture별 독립 effect 할당**을 지원합니다. 각 fixture가 서로 다른 effect(또는 정적 색상)를 동시에 실행할 수 있습니다.
+
 5가지 내장 effect는 다음과 같습니다:
 
 | Effect | 설명 |
 |---|---|
-| **Color Chase** | 한 번에 하나의 fixture만 켜지며, 활성 fixture가 지정된 speed로 순환합니다. |
+| **Color** | 개별 디머 컨트롤이 있는 정적 단색입니다. |
+| **Chase** | 한 번에 하나의 fixture만 켜지며, 활성 fixture가 지정된 speed로 순환합니다. |
 | **Sine Pulse** | 모든 fixture가 사인파를 따라 밝기가 함께 맥동합니다. |
 | **Color Wave** | 각 fixture 사이에 설정 가능한 위상 오프셋을 두고 전체 무지개 색조 사이클이 fixture들을 가로질러 전파됩니다. |
 | **Strobe** | 모든 fixture가 지정된 speed로 켜졌다 꺼졌다를 반복합니다. |
@@ -231,23 +236,25 @@ store는 다음 섹션으로 나뉩니다:
 ---
 ## The Five Screens
 
-### Live Control (`screens/LiveControlScreen.jsx`)
+### Live Control (`screens/EffectEngineScreen.jsx`) — screen key: `live`
 
-메인 퍼포먼스 화면입니다. fixture당 하나씩 **fixture 타일** 그리드를 표시합니다. 각 타일의 배경색은 해당 fixture의 현재 색상을 반영합니다. 타일을 클릭하면 `ColorPicker` 모달이 열립니다.
+메인 퍼포먼스 화면입니다. fixture당 하나씩 **fixture 타일** 그리드를 표시합니다. 각 타일의 배경색은 해당 fixture의 현재 색상을 반영합니다. 타일을 클릭하면 편집 대상으로 선택됩니다.
 
-상단에는 **group 선택 버튼**이 있으며, group을 선택하고 "Set Group Color"를 누르면 해당 group의 모든 fixture에 동일한 색상이 적용됩니다.
+오른쪽 패널에는 선택된 fixture(들)에 대한 **effect 에디터**가 표시됩니다. 각 fixture에 내장 effect 중 하나(또는 정적 색상)를 독립적으로 할당할 수 있습니다. **Apply**를 클릭하면 선택된 fixture에 effect가 적용되고, **Clear**를 클릭하면 effect가 제거되어 수동 색상 제어로 돌아갑니다.
 
-**FLASH 버튼**은 누르고 있는 동안 모든 fixture에 완전한 흰색(`255, 255, 255`)을 임시로 전송하고, 뗄 때 이전 blackout 상태를 복원합니다.
+상단의 **group 선택 버튼**으로 group 내 모든 fixture를 한 번에 선택할 수 있습니다. **Save Scene** 버튼은 현재 색상과 활성 effect 할당을 스냅샷하여 이름이 붙은 scene 파일로 저장합니다.
 
-### Scene Browser (`screens/SceneBrowserScreen.jsx`)
+effect가 실행 중일 때 파라미터를 변경하면 엔진이 새 값으로 즉시 업데이트되므로 멈추지 않고도 실시간으로 효과가 변경됩니다.
+
+### Scene Browser (`screens/SceneBrowserScreen.jsx`) — screen key: `scenes`
 
 저장된 조명 상태의 라이브러리입니다. 각 scene 카드는 **썸네일** — scene의 처음 8개 fixture를 작은 색상 그리드로 보여줍니다.
 
-**scene 저장**은 store의 현재 `fixtureState` 스냅샷을 찍고, 이름을 입력받아 `window.api.saveScene()`을 통해 `resources/scenes/<scene_id>.json`에 씁니다. scene ID는 타임스탬프(`scene_<Date.now()>`)입니다.
+**scene 저장**은 store의 현재 `fixtureState`와 fixture별 effect 할당 스냅샷을 찍고, 이름을 입력받아 `window.api.saveScene()`을 통해 `resources/scenes/<scene_id>.json`에 씁니다. scene ID는 타임스탬프(`scene_<Date.now()>`)입니다.
 
-**scene 불러오기**(더블클릭 또는 GO 클릭)는 `store.recallScene(sceneId)`를 호출하며, scene의 `fade_in_ms` 설정에 따라 모든 fixture 색상을 즉시 변경하거나 fade 전환합니다. scene 카드를 우클릭하면 Recall과 Delete 옵션이 있는 컨텍스트 메뉴가 열립니다.
+**scene 불러오기**(더블클릭 또는 GO 클릭)는 `store.recallScene(sceneId)`를 호출하며, scene의 `fade_in_ms` 설정에 따라 모든 fixture 색상을 즉시 변경하거나 fade 전환합니다. scene에 저장된 fixture별 effect 할당도 함께 복원됩니다. scene 카드를 우클릭하면 Recall과 Delete 옵션이 있는 컨텍스트 메뉴가 열립니다.
 
-### Cue List (`screens/CueListScreen.jsx`)
+### Cue List (`screens/CueListScreen.jsx`) — screen key: `cues`
 
 순서대로 공연을 재생하는 도구입니다. **cue list**는 각 cue가 scene과 fade 시간, cue 번호를 연결하는 순서가 있는 표입니다.
 
@@ -255,13 +262,19 @@ store는 다음 섹션으로 나뉩니다:
 
 cue 이름은 더블클릭으로 편집할 수 있습니다. 연결된 scene과 fade 시간은 인라인으로 편집 가능합니다. 모든 변경사항은 `window.api.saveCueList()`를 통해 `cue-list.json`에 즉시 저장됩니다.
 
-### Effect Engine (`screens/EffectEngineScreen.jsx`)
+### Fixture Editor (`screens/FixtureEditorScreen.jsx`) — screen key: `fixtures`
 
-라이브 퍼포먼스용 effect 패널입니다. 왼쪽 열에 5개의 내장 effect 목록이 있습니다. effect를 선택하면 메인 패널에 파라미터(speed, 색상, 위상 오프셋)가 표시됩니다.
+물리적인 조명 장비 구성을 관리하는 전용 화면입니다.
 
-**group 선택기**는 effect가 적용될 fixture를 결정합니다 — "All Fixtures" 또는 이름이 있는 group. **START**를 클릭하면 `effectEngine.current.start(key, fixtureIds, params)`가 호출됩니다. effect가 실행 중일 때 파라미터를 변경하면 엔진이 새 파라미터로 즉시 재시작되므로, 멈추지 않고도 효과가 실시간으로 업데이트됩니다.
+왼쪽 열에 정의된 모든 fixture와 group이 나열됩니다. **Add Fixture** 또는 **Add Group**을 클릭하면 오른쪽에 입력 패널이 열립니다. 기존 fixture나 group을 클릭하면 편집 모드로 열립니다.
 
-### Settings (`screens/SettingsScreen.jsx`)
+**Fixture 필드**: 이름, 타입 프리셋(RGB PAR 3ch / 4ch / 7ch, RGBA 8ch), DMX base channel, group 할당.
+
+**DMX 충돌 감지** — 에디터는 DMX channel 범위가 겹치는 fixture를 강조 표시하여, 하드웨어에 실제로 적용되기 전에 channel 충돌을 미리 방지합니다.
+
+편집 패널에서 **Save**를 클릭하면 변경사항이 확정되어 `window.api.saveFixtures()`를 통해 `fixtures.json`이 디스크에 기록되고 store의 fixture 정의가 다시 로드됩니다.
+
+### Settings (`screens/SettingsScreen.jsx`) — screen key: `settings`
 
 하드웨어 연결 설정 화면입니다.
 
@@ -269,7 +282,7 @@ cue 이름은 더블클릭으로 편집할 수 있습니다. 연결된 scene과 
 
 **Simulate mode** — Arduino가 없다면 "Start Simulate"로 가짜 연결 모드를 활성화하여 하드웨어 없이도 앱의 모든 기능(scene, cue, effect)을 사용할 수 있습니다.
 
-**Fixture configuration** — 다른 파일 경로에서 커스텀 `fixtures.json`을 로드하거나 기본 파일을 다시 로드할 수 있습니다. 다른 조명 장비로 앱을 재설정하는 방법입니다.
+**Fixture configuration** — 다른 파일 경로에서 커스텀 `fixtures.json`을 로드할 수 있습니다. 앱 번들 외부에 위치한 fixtures 파일(예: 공연별 장비 파일)을 가리킬 때 사용합니다.
 
 ---
 ## Shared UI Components
@@ -285,6 +298,10 @@ cue 이름은 더블클릭으로 편집할 수 있습니다. 연결된 scene과 
 - **Heartbeat 통계**: 마지막 Arduino heartbeat의 패킷 수와 오류 수.
 - **BLACKOUT** 텍스트(빨간색, 맥동): blackout이 활성화된 경우.
 - **Master Dimmer 슬라이더**: `store.setMasterDimmer(value)`를 호출하는 range 입력. master dimmer를 변경하면 새 값으로 스케일된 현재 fixture 색상이 즉시 다시 전송됩니다.
+
+### StageVisualizer (`components/StageVisualizer.jsx`)
+
+무대 장비의 소형 조감도로, `settings`와 `fixtures` 화면을 제외한 모든 화면의 우측 패널에 표시됩니다. fixture들은 group별로 배열되고 각 fixture 타일은 현재 색상으로 실시간 발광합니다. 사이드바 레이아웃에 맞게 크기를 줄여주는 `compact` prop을 지원합니다.
 
 ### ColorPicker (`components/ColorPicker.jsx`)
 
@@ -309,7 +326,9 @@ cue 이름은 더블클릭으로 편집할 수 있습니다. 연결된 scene과 
 물리적인 조명 장비를 정의합니다. 각 fixture는 다음을 포함합니다:
 - `id` — 모든 패킷에서 사용되는 논리적 ID(0–31). Arduino의 `fixtureMap[]`과 일치해야 합니다.
 - `name` — UI에 표시되는 사람이 읽기 쉬운 레이블.
+- `type` — fixture 프리셋 키(예: `rgb_par_7ch`). channel 레이아웃을 정의합니다.
 - `dmx_base` — 조명 기기의 물리적 DMX 시작 channel(기기의 DIP 스위치로 설정).
+- `channels` — 타입 프리셋에서 파생된 channel 오프셋 맵(예: `{dimmer: 0, red: 1, green: 2, blue: 3}`).
 - `group` — 일괄 제어를 위한 group 이름.
 
 group도 이 파일에서 정의되며, group 선택 버튼에 표시될 내용을 제어합니다.
@@ -318,7 +337,7 @@ group도 이 파일에서 정의되며, group 선택 버튼에 표시될 내용�
 
 저장된 각 scene은 별도의 파일입니다. scene은 다음을 저장합니다:
 - `scene_id`, `name`, `fade_in_ms`, `fade_out_ms`
-- `fixtures` — scene이 저장된 시점의 모든 fixture에 대한 `{id, r, g, b}` 스냅샷 배열.
+- `fixtures` — scene이 저장된 시점의 모든 fixture에 대한 `{id, dim, r, g, b, effect, effectParams}` 스냅샷 배열.
 
 ### `cue-list.json`
 
@@ -338,24 +357,24 @@ fixture 타일에서 색상을 클릭하여 조명이 변경될 때 일어나는
         ↓
 2. ColorPicker가 onChange(r, g, b)를 호출합니다
         ↓
-3. LiveControlScreen이 store.setFixtureColor(id, r, g, b)를 호출합니다
+3. EffectEngineScreen이 store.setFixtureColor(id, r, g, b)를 호출합니다
         ↓
-4. store.js가 fixtureState를 업데이트 → React가 새 배경색으로 FixtureTile을 다시 렌더링합니다
-   store.js가 window.api.setFixture(id, r*dimmer, g*dimmer, b*dimmer)를 호출합니다
+4. store.js가 fixtureState를 업데이트 → React가 새 배경색으로 fixture 타일을 다시 렌더링합니다
+   store.js가 window.api.setFixture(id, d, r, g, b)를 호출합니다
         ↓
-5. preload/index.js: ipcRenderer.invoke('serial:set-fixture', id, r, g, b)
+5. preload/index.js: ipcRenderer.invoke('serial:set-fixture', id, d, r, g, b)
         ↓  [IPC 경계 — renderer에서 main process로 교차]
-6. main/index.js: ipcMain.handle('serial:set-fixture', ...)가 bridge.setFixture(id, r, g, b)를 호출합니다
+6. main/index.js: ipcMain.handle('serial:set-fixture', ...)가 bridge.setFixture(id, d, r, g, b)를 호출합니다
         ↓
 7. serial-bridge.js: pendingState[id]를 업데이트하고, dirtyFlags[id] = true로 설정합니다
         ↓  [다음 44Hz 프레임 tick, ~0–22ms 후]
-8. serial-bridge.js: _sendFrame()이 dirty flag를 감지하고, 패킷 [0xFF, id, r, g, b]를 조립하여
+8. serial-bridge.js: _sendFrame()이 dirty flag를 감지하고, 패킷 [0xFF, id, d, r, g, b]를 조립하여
    시리얼 포트에 씁니다
         ↓  [USB 시리얼, ~0.4ms]
-9. Arduino: 5바이트를 수신하고, parser가 패킷을 조립하여
-   setFixture(id, r, g, b)를 호출합니다
+9. Arduino: 6바이트를 수신하고, parser가 패킷을 조립하여
+   setFixture(id, d, r, g, b)를 호출합니다
         ↓
-10. Arduino: dmx_master.setChannelValue(dmxBase, r) — g, b도 동일하게 처리합니다
+10. Arduino: setChannelValue(dmxBase + CH_DIMMER, d), setChannelValue(dmxBase + CH_RED, r) — g, b도 동일하게 처리합니다
         ↓  [DMX512 프레임, ~22.7ms]
 11. 무대 조명: DMX channel 값을 수신하여 색상을 변경합니다
 ```

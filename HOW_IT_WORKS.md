@@ -33,32 +33,32 @@ Lights/
 │       ├── fixtures.json         ← Fixture definitions
 │       ├── cue-list.json         ← Saved show cue list
 │       └── scenes/               ← One JSON file per saved scene
-└── standalone_lighting_control_pipeline.md   ← Design reference doc
 ```
 
 ---
 
-## The Arduino Firmware (`arduino/lighting_controller.ino`)
+## The Arduino Firmware (`arduino/lighting_controller/lighting_controller.ino`)
 
 This is the firmware flashed onto the Arduino Mega 2560.
 
 ### What it does
 
-1. **Receives 5-byte packets** from the PC over USB at 115200 baud.
+1. **Receives 6-byte packets** from the PC over USB at 115200 baud.
 2. **Translates each packet** into a DMX channel write using a `fixtureMap` lookup table.
 3. **Sends a heartbeat** back to the PC every second so the PC knows the Arduino is alive.
 
 ### The serial packet format
 
-Every color command the PC sends is exactly 5 bytes:
+Every color command the PC sends is exactly 6 bytes:
 
 ```
-[0xFF] [fixture_id] [R] [G] [B]
+[0xFF] [fixture_id] [D] [R] [G] [B]
 ```
 
 - `0xFF` is the start marker that tells the Arduino "a new packet is beginning."
 - `fixture_id` is 0–31, identifying which light to update.
-- `R`, `G`, `B` are brightness values 0–255.
+- `D` is the individual dimmer value 0–254.
+- `R`, `G`, `B` are color values 0–255.
 
 Two special `fixture_id` values exist:
 - `0xFE` → **Blackout**: set all DMX channels to 0 immediately.
@@ -66,19 +66,19 @@ Two special `fixture_id` values exist:
 
 ### The parser state machine
 
-The Arduino reads bytes one at a time in `loop()`. A simple state machine (`STATE_WAIT_START` → `STATE_READ_ID` → `STATE_READ_R` → `STATE_READ_G` → `STATE_READ_B`) assembles each packet. If it sees `0xFF` in an unexpected position (meaning a packet was corrupted), it re-synchronises by treating it as a new start byte.
+The Arduino reads bytes one at a time in `loop()`. A simple state machine (`STATE_WAIT_START` → `STATE_READ_ID` → `STATE_READ_DIMMER` → `STATE_READ_R` → `STATE_READ_G` → `STATE_READ_B`) assembles each packet. If it sees `0xFF` in an unexpected position (meaning a packet was corrupted), it re-synchronises by treating it as a new start byte.
 
 ### The fixture map
 
 ```cpp
 uint16_t fixtureMap[MAX_FIXTURES] = {
-  1,  // Fixture 0 → DMX channels 1, 2, 3
-  4,  // Fixture 1 → DMX channels 4, 5, 6
+  1,  // Fixture 0 → DMX channels 1–7
+  8,  // Fixture 1 → DMX channels 8–14
   ...
 };
 ```
 
-This maps a logical fixture ID (0–31) to the DMX base channel. Each RGB fixture uses 3 consecutive channels. **This table must match `resources/fixtures.json`** on the PC side — they are two halves of the same fixture definition.
+This maps a logical fixture ID (0–31) to the DMX base channel. Each fixture uses 7 consecutive channels (dimmer, red, green, blue, strobe, mode, speed). **This table must match `resources/fixtures.json`** on the PC side — they are two halves of the same fixture definition.
 
 ### The heartbeat
 
@@ -156,7 +156,7 @@ Serial actions:  listPorts, startSimulate, stopSimulate, connect, disconnect,
                  setFixture, setBlackout, reset, isConnected
 Serial events:   onConnected, onDisconnected, onError, onHeartbeat,
                  onHeartbeatTimeout, onBlackout
-File actions:    loadFixtures, loadScenes, saveScene, deleteScene,
+File actions:    loadFixtures, saveFixtures, loadScenes, saveScene, deleteScene,
                  loadCueList, saveCueList
 ```
 
@@ -172,7 +172,7 @@ Everything in `src/renderer/src/` is the React UI that the user interacts with.
 
 `App.jsx` is the root component. It does three important things on startup:
 
-1. **Creates the engines** — `FadeEngine` and `EffectEngine` are instantiated here and destroyed when the app unmounts.
+1. **Creates the engines** — `FadeEngine` and `EffectEngine` are instantiated here and destroyed when the app unmounts. Both are stored: `EffectEngine` is kept in a `useRef` (passed as a prop to `EffectEngineScreen`) and also in the Zustand store (via `setEffectEngine`) so that `recallScene` can trigger effects from store actions.
 2. **Loads initial data** — calls `window.api.loadFixtures()`, `window.api.loadScenes()`, and `window.api.loadCueList()` once on startup to populate the Zustand store.
 3. **Registers serial event listeners** — listens for `onConnected`, `onDisconnected`, `onHeartbeat`, `onHeartbeatTimeout` and routes them into the store.
 
@@ -181,7 +181,7 @@ It also registers the **global keyboard shortcuts**:
 - `Enter` → go to next cue
 - `Backspace` → go to previous cue
 
-The layout is: `<Sidebar>` on the left, `<StatusBar>` on top, and one of the five screens in the main area depending on `store.activeScreen`.
+The layout is: `<Sidebar>` on the left, `<StatusBar>` on top, one of the five screens in the main area, a `<StageVisualizer>` panel on the right (hidden on the `settings` and `fixtures` screens), and `<BlackoutButton>` overlaid on the right edge.
 
 ---
 
@@ -194,23 +194,25 @@ The store is divided into these sections:
 | Section | What it holds |
 |---|---|
 | **Connection** | `connected`, `connectedPort`, `simulateMode`, `heartbeat`, `heartbeatTimeout` |
-| **Fixtures** | `fixtures` (the definitions), `fixtureState` (current colors as `{[id]: {r,g,b}}`) |
+| **Fixtures** | `fixtures` (the definitions), `fixtureState` (current colors as `{[id]: {d,r,g,b}}`) |
 | **Groups** | The group definitions loaded from fixtures.json |
 | **Blackout** | `blackoutActive` flag |
 | **Master Dimmer** | `masterDimmer` (0.0–1.0 multiplier) |
 | **Scenes** | `scenes` array, `activeSceneId` |
 | **Cue List** | `cueList` object, `currentCueIndex` |
-| **Engines** | `fadeEngine` ref |
-| **Active Effect** | `activeEffect`, `effectParams` |
+| **Engines** | `fadeEngine` ref, `effectEngine` ref |
+| **Per-fixture Effects** | `fixtureEffects` (`{[fixtureId]: {effectKey, params}}`) |
 | **UI** | `activeScreen` (which of the 5 screens is shown) |
 
 ### The central write path
 
 `setFixtureColor(id, r, g, b)` is called by every part of the app that wants to change a light's color. It:
-1. Updates `fixtureState` in React (so the UI re-renders).
+1. Updates `fixtureState` in React (so the UI re-renders), storing `{d, r, g, b}` where `d` is the current master dimmer scaled to 0–254.
 2. Calls `window.api.setFixture(id, r*dimmer, g*dimmer, b*dimmer)` to send the command to the main process (which forwards it to the Arduino).
 
-The **master dimmer** is applied at this point. The store stores the "true" color, but only the dimmer-scaled color is ever sent to the Arduino.
+`setFixtureDimmer(id, d)` updates only the individual dimmer channel for a fixture without changing its RGB color.
+
+The **master dimmer** is applied at `setFixtureColor` time. The store stores the "true" color, but only the dimmer-scaled color is ever sent to the Arduino.
 
 ---
 
@@ -228,11 +230,14 @@ Generates time-varying RGB values to create animated lighting effects. It also r
 
 Each effect is defined as a pure `tick(fixtures, time, params)` function — given a list of fixture IDs, the elapsed time in milliseconds, and some parameters, it returns an array of `{id, r, g, b}` results. The engine calls `setFixtureColor` with these results on every tick.
 
+Unlike the global group-level effects in earlier versions, the engine now supports **per-fixture effect assignment**: each fixture can independently run a different effect (or a static color) at the same time.
+
 The five built-in effects are:
 
 | Effect | What it does |
 |---|---|
-| **Color Chase** | One fixture is lit at a time; the active fixture cycles through all of them at the given speed. |
+| **Color** | Static solid color with individual dimmer control. |
+| **Chase** | One fixture is lit at a time; the active fixture cycles through all of them at the given speed. |
 | **Sine Pulse** | All fixtures pulse in brightness together, following a sine wave. |
 | **Color Wave** | A full rainbow hue cycle propagates across the fixtures with a configurable phase offset between each one. |
 | **Strobe** | All fixtures flash on and off at the given speed. |
@@ -242,23 +247,25 @@ The five built-in effects are:
 
 ## The Five Screens
 
-### Live Control (`screens/LiveControlScreen.jsx`)
+### Live Control (`screens/EffectEngineScreen.jsx`) — screen key: `live`
 
-The main performance screen. Shows a grid of **fixture tiles**, one per fixture. Each tile's background color reflects the fixture's current color. Clicking a tile opens the `ColorPicker` modal.
+The primary performance screen. Shows a grid of **fixture tiles**, one per fixture. Each tile's background color reflects the fixture's current color. Clicking a tile selects it for editing.
 
-At the top, there are **group selector buttons** — clicking a group and then "Set Group Color" sets all fixtures in that group to the same color at once.
+The right panel shows the **effect editor** for the selected fixture(s). You can assign any of the built-in effects (or a static color) to each fixture independently. Clicking **Apply** commits the effect to the selected fixtures; **Clear** removes it and returns those fixtures to manual color control.
 
-The **FLASH button** temporarily sends full white (`255, 255, 255`) to all fixtures while held down, then restores the previous blackout state on release.
+**Group selector buttons** at the top let you select all fixtures in a group at once. The **Save Scene** button snapshots the current colors and active effect assignments into a named scene file.
 
-### Scene Browser (`screens/SceneBrowserScreen.jsx`)
+Parameter changes while an effect is running immediately update the engine with new values — no need to stop and restart.
+
+### Scene Browser (`screens/SceneBrowserScreen.jsx`) — screen key: `scenes`
 
 A library of saved lighting states. Each scene card shows a **thumbnail** — a miniature colored grid of the first 8 fixtures in the scene.
 
-**Saving a scene** takes a snapshot of the current `fixtureState` from the store, prompts for a name, and writes it to `resources/scenes/<scene_id>.json` via `window.api.saveScene()`. The scene ID is a timestamp (`scene_<Date.now()>`).
+**Saving a scene** takes a snapshot of the current `fixtureState` and per-fixture effect assignments from the store, prompts for a name, and writes it to `resources/scenes/<scene_id>.json` via `window.api.saveScene()`. The scene ID is a timestamp (`scene_<Date.now()>`).
 
-**Recalling a scene** (double-click, or click GO) calls `store.recallScene(sceneId)`, which either instantly sets all fixture colors or fades to them using the scene's `fade_in_ms` setting. Right-clicking a scene card opens a context menu with Recall and Delete options.
+**Recalling a scene** (double-click, or click GO) calls `store.recallScene(sceneId)`, which either instantly sets all fixture colors or fades to them using the scene's `fade_in_ms` setting. Per-fixture effect assignments saved with the scene are also restored. Right-clicking a scene card opens a context menu with Recall and Delete options.
 
-### Cue List (`screens/CueListScreen.jsx`)
+### Cue List (`screens/CueListScreen.jsx`) — screen key: `cues`
 
 A sequenced show playback tool. A **cue list** is an ordered table of cues, each linking a scene to a fade time and a cue number.
 
@@ -266,13 +273,19 @@ The **GO button** (or `Enter` key) advances `currentCueIndex` and recalls the ne
 
 Cue names can be edited by double-clicking them. The associated scene and fade time are editable inline. All changes are immediately saved to `cue-list.json` via `window.api.saveCueList()`.
 
-### Effect Engine (`screens/EffectEngineScreen.jsx`)
+### Fixture Editor (`screens/FixtureEditorScreen.jsx`) — screen key: `fixtures`
 
-A live-performance effect panel. The left column is a list of the 5 built-in effects. Selecting one shows its parameters (speed, color, phase offset) in the main panel.
+A dedicated screen for managing the physical lighting rig configuration.
 
-The **group selector** determines which fixtures the effect runs on — "All Fixtures" or any named group. Clicking **START** calls `effectEngine.current.start(key, fixtureIds, params)`. Parameter changes while an effect is running immediately restart the engine with the new parameters, so you hear the effect update live without stopping it.
+The left column lists all defined fixtures and groups. Clicking **Add Fixture** or **Add Group** opens a form panel on the right. Clicking an existing fixture or group opens it for editing.
 
-### Settings (`screens/SettingsScreen.jsx`)
+**Fixture fields**: name, type preset (RGB PAR 3ch / 4ch / 7ch, RGBA 8ch), DMX base channel, group assignment.
+
+**DMX conflict detection** — the editor highlights any fixtures whose DMX channel ranges overlap, preventing accidental channel collisions before they reach the hardware.
+
+All changes are committed by clicking **Save** in the edit panel, which writes the updated `fixtures.json` to disk via `window.api.saveFixtures()` and reloads the fixture definitions into the store.
+
+### Settings (`screens/SettingsScreen.jsx`) — screen key: `settings`
 
 Configuration screen for hardware connection.
 
@@ -280,7 +293,7 @@ Configuration screen for hardware connection.
 
 **Simulate mode** — if you have no Arduino, "Start Simulate" enables the fake-connected mode so you can use all features of the app (scenes, cues, effects) without hardware.
 
-**Fixture configuration** — lets you load a custom `fixtures.json` from a different file path, or reload the default one. This is how you would reconfigure the app for a different lighting rig.
+**Fixture configuration** — lets you load a custom `fixtures.json` from a different file path, or reload the default one. This is how you would point the app at a fixtures file located outside the app bundle (e.g., a show-specific rig file).
 
 ---
 
@@ -297,6 +310,10 @@ The thin bar across the top of the app. Shows:
 - **Heartbeat stats**: packet count and error count from the last Arduino heartbeat.
 - **BLACKOUT** text (red, pulsing) when blackout is active.
 - **Master Dimmer slider**: a range input that calls `store.setMasterDimmer(value)`. Changing the master dimmer immediately re-broadcasts all current fixture colors scaled by the new value.
+
+### StageVisualizer (`components/StageVisualizer.jsx`)
+
+A miniature overhead view of the stage rig, shown in a narrow right panel on all screens except `settings` and `fixtures`. Fixtures are arranged by group, and each fixture tile glows with its current color in real time. Accepts a `compact` prop that scales down sizes for the sidebar layout.
 
 ### ColorPicker (`components/ColorPicker.jsx`)
 
@@ -322,7 +339,9 @@ A large persistent button on the right edge of the screen. Calls `store.toggleBl
 Defines the physical lighting rig. Each fixture has:
 - `id` — the logical ID used in all packets (0–31). Must match `fixtureMap[]` in the Arduino.
 - `name` — human-readable label shown in the UI.
+- `type` — fixture preset key (e.g. `rgb_par_7ch`) that defines the channel layout.
 - `dmx_base` — the DMX start channel on the physical fixture (set via DIP switches on the light).
+- `channels` — channel offset map derived from the type preset (e.g. `{dimmer: 0, red: 1, green: 2, blue: 3}`).
 - `group` — group name for bulk control.
 
 Groups are also defined here and control what appears in the group selector buttons.
@@ -331,7 +350,7 @@ Groups are also defined here and control what appears in the group selector butt
 
 Each saved scene is its own file. A scene stores:
 - `scene_id`, `name`, `fade_in_ms`, `fade_out_ms`
-- `fixtures` — an array of `{id, r, g, b}` snapshots for every fixture at the time the scene was saved.
+- `fixtures` — an array of `{id, dim, r, g, b, effect, effectParams}` snapshots for every fixture at the time the scene was saved.
 
 ### `cue-list.json`
 
@@ -352,24 +371,24 @@ Here is what happens when you click a color on a fixture tile and the light chan
         ↓
 2. ColorPicker calls onChange(r, g, b)
         ↓
-3. LiveControlScreen calls store.setFixtureColor(id, r, g, b)
+3. EffectEngineScreen calls store.setFixtureColor(id, r, g, b)
         ↓
-4. store.js updates fixtureState → React re-renders the FixtureTile with new background color
-   store.js calls window.api.setFixture(id, r*dimmer, g*dimmer, b*dimmer)
+4. store.js updates fixtureState → React re-renders the fixture tile with new background color
+   store.js calls window.api.setFixture(id, d, r, g, b)
         ↓
-5. preload/index.js: ipcRenderer.invoke('serial:set-fixture', id, r, g, b)
+5. preload/index.js: ipcRenderer.invoke('serial:set-fixture', id, d, r, g, b)
         ↓  [IPC boundary — crosses from renderer to main process]
-6. main/index.js: ipcMain.handle('serial:set-fixture', ...) calls bridge.setFixture(id, r, g, b)
+6. main/index.js: ipcMain.handle('serial:set-fixture', ...) calls bridge.setFixture(id, d, r, g, b)
         ↓
 7. serial-bridge.js: updates pendingState[id], sets dirtyFlags[id] = true
         ↓  [next 44Hz frame tick, ~0–22ms later]
-8. serial-bridge.js: _sendFrame() sees the dirty flag, builds packet [0xFF, id, r, g, b],
+8. serial-bridge.js: _sendFrame() sees the dirty flag, builds packet [0xFF, id, d, r, g, b],
    writes to the serial port
         ↓  [USB serial, ~0.4ms]
-9. Arduino: receives 5 bytes, parser assembles the packet,
-   calls setFixture(id, r, g, b)
+9. Arduino: receives 6 bytes, parser assembles the packet,
+   calls setFixture(id, d, r, g, b)
         ↓
-10. Arduino: dmx_master.setChannelValue(dmxBase, r) — and same for g, b
+10. Arduino: setChannelValue(dmxBase + CH_DIMMER, d), setChannelValue(dmxBase + CH_RED, r) — and same for g, b
         ↓  [DMX512 frame, ~22.7ms]
 11. Stage light: receives its DMX channel values, changes color
 ```
