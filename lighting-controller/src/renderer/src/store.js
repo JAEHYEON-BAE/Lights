@@ -74,6 +74,7 @@ const useStore = create((set, get) => ({
   setFixtureDimmer: (id, d) => {
     const clamped = Math.max(0, Math.min(254, Math.round(d)))
     set(s => ({ fixtureState: { ...s.fixtureState, [id]: { ...s.fixtureState[id], d: clamped } } }))
+    if (!(get().fixtureEnabled[id] ?? true)) return
     const c = get().fixtureState[id] || { r: 0, g: 0, b: 0 }
     window.api.setFixture(id, clamped, c.r, c.g, c.b)
   },
@@ -92,8 +93,7 @@ const useStore = create((set, get) => ({
     const next = !current
     set(s => ({ fixtureEnabled: { ...s.fixtureEnabled, [id]: next } }))
     if (!next) {
-      const c = get().fixtureState[id] || { r: 0, g: 0, b: 0 }
-      window.api.setFixture(id, 0, c.r, c.g, c.b)
+      window.api.setFixture(id, 0, 0, 0, 0)
     } else {
       const { masterDimmer, fixtureState } = get()
       const d = Math.round(masterDimmer * 254)
