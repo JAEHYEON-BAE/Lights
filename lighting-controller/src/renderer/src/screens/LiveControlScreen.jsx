@@ -24,39 +24,39 @@ function FixtureTile({ fixture }) {
 
   return (
     <>
-      <div className="relative aspect-square">
+      <div className="flex flex-col rounded-xl border overflow-hidden transition-all
+        border-surface-600">
+        {/* Color area — click to open color picker */}
         <button
           onClick={() => enabled && setOpen(true)}
-          className={`w-full h-full flex flex-col items-center justify-between rounded-xl border p-2 transition-all
-            ${enabled
-              ? 'border-surface-600 hover:border-surface-500'
-              : 'border-surface-700 opacity-50 cursor-default'}`}
-          style={{ background: hex }}
+          className={`flex flex-col items-center justify-between p-2 transition-all
+            ${enabled ? 'hover:brightness-110 cursor-pointer' : 'opacity-40 cursor-default'}`}
+          style={{ background: hex, aspectRatio: '1 / 1' }}
         >
-          <span className="text-[10px] font-mono opacity-60" style={{ color: textColor }}>
+          <span className="text-[10px] font-mono opacity-60 self-start" style={{ color: textColor }}>
             {fixture.id}
           </span>
           <span className="text-[10px] text-center leading-tight" style={{ color: textColor }}>
             {fixture.name}
           </span>
           <span className="text-[10px] font-mono opacity-60" style={{ color: textColor }}>
-            {enabled ? hex : 'OFF'}
+            {hex}
           </span>
         </button>
 
-        {/* Power toggle button */}
+        {/* Power toggle bar */}
         <button
-          onClick={(e) => { e.stopPropagation(); toggleFixtureEnabled(fixture.id) }}
-          title={enabled ? 'Turn off' : 'Turn on'}
-          className={`absolute top-1 right-1 w-4 h-4 rounded-full flex items-center justify-center transition-colors
+          onClick={() => toggleFixtureEnabled(fixture.id)}
+          className={`flex items-center justify-center gap-1 py-1 text-[10px] font-bold tracking-widest transition-colors
             ${enabled
-              ? 'bg-black/30 hover:bg-black/50 text-white'
-              : 'bg-white/20 hover:bg-white/40 text-white'}`}
+              ? 'bg-green-700/60 hover:bg-green-600/70 text-green-200'
+              : 'bg-surface-800 hover:bg-surface-700 text-gray-500'}`}
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
-            strokeLinecap="round" className="w-2.5 h-2.5">
+            strokeLinecap="round" className="w-3 h-3">
             <path d="M12 3v4M6.3 6.3A8 8 0 1 0 17.7 6.3" />
           </svg>
+          {enabled ? 'ON' : 'OFF'}
         </button>
       </div>
 
