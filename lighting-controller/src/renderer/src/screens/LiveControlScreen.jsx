@@ -7,35 +7,58 @@ function rgbToHex(r, g, b) {
 }
 
 function FixtureTile({ fixture }) {
-  const fixtureState   = useStore(s => s.fixtureState)
-  const setFixtureColor = useStore(s => s.setFixtureColor)
+  const fixtureState        = useStore(s => s.fixtureState)
+  const fixtureEnabled      = useStore(s => s.fixtureEnabled)
+  const setFixtureColor     = useStore(s => s.setFixtureColor)
+  const toggleFixtureEnabled = useStore(s => s.toggleFixtureEnabled)
   const [open, setOpen] = useState(false)
 
+  const enabled = fixtureEnabled[fixture.id] ?? true
   const { r = 0, g = 0, b = 0, d = 254 } = fixtureState[fixture.id] || {}
   const dr = Math.round(r * d / 254)
   const dg = Math.round(g * d / 254)
   const db = Math.round(b * d / 254)
-  const hex = rgbToHex(dr, dg, db)
+  const hex = enabled ? rgbToHex(dr, dg, db) : '#1a1a1a'
   const dim = dr + dg + db
-  const textColor = dim > 200 ? '#000' : '#fff'
+  const textColor = enabled && dim > 200 ? '#000' : '#fff'
 
   return (
     <>
-      <button
-        onClick={() => setOpen(true)}
-        className="flex flex-col items-center justify-between rounded-xl border border-surface-600 hover:border-surface-500 p-2 transition-all aspect-square"
-        style={{ background: hex }}
-      >
-        <span className="text-[10px] font-mono opacity-60" style={{ color: textColor }}>
-          {fixture.id}
-        </span>
-        <span className="text-[10px] text-center leading-tight" style={{ color: textColor }}>
-          {fixture.name}
-        </span>
-        <span className="text-[10px] font-mono opacity-60" style={{ color: textColor }}>
-          {hex}
-        </span>
-      </button>
+      <div className="flex flex-col rounded-xl border overflow-hidden transition-all
+        border-surface-600">
+        {/* Color area — click to open color picker */}
+        <button
+          onClick={() => enabled && setOpen(true)}
+          className={`flex flex-col items-center justify-between p-2 transition-all
+            ${enabled ? 'hover:brightness-110 cursor-pointer' : 'opacity-40 cursor-default'}`}
+          style={{ background: hex, aspectRatio: '1 / 1' }}
+        >
+          <span className="text-[10px] font-mono opacity-60 self-start" style={{ color: textColor }}>
+            {fixture.id}
+          </span>
+          <span className="text-[10px] text-center leading-tight" style={{ color: textColor }}>
+            {fixture.name}
+          </span>
+          <span className="text-[10px] font-mono opacity-60" style={{ color: textColor }}>
+            {hex}
+          </span>
+        </button>
+
+        {/* Power toggle bar */}
+        <button
+          onClick={() => toggleFixtureEnabled(fixture.id)}
+          className={`flex items-center justify-center gap-1.5 py-2 text-xs font-bold tracking-widest transition-colors
+            ${enabled
+              ? 'bg-green-600 hover:bg-green-500 text-white'
+              : 'bg-surface-700 hover:bg-surface-600 text-gray-400'}`}
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
+            strokeLinecap="round" className="w-3.5 h-3.5">
+            <path d="M12 3v4M6.3 6.3A8 8 0 1 0 17.7 6.3" />
+          </svg>
+          {enabled ? 'ON' : 'OFF'}
+        </button>
+      </div>
 
       {open && (
         <ColorPicker

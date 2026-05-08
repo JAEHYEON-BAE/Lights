@@ -37,43 +37,79 @@ const useStore = create((set, get) => ({
 
   // ── Fixtures ───────────────────────────────────────────────────────────────
   fixtures: [],
-  fixtureState: {},   // { [id]: { r, g, b } }
+  fixtureState: {},  // { [id]: { d, r, g, b } }  — intended values (editor state)
+  outputState:  {},  // { [id]: { d, r, g, b } }  — what was actually sent to hardware
+
+  // Internal: send to hardware and record in outputState
+  _sendFixture: (id, d, r, g, b) => {
+    window.api.setFixture(id, d, r, g, b)
+    set(s => ({ outputState: { ...s.outputState, [id]: { d, r, g, b } } }))
+  },
 
   loadFixtures: (data) => {
     if (!data) return
-    const state = {}
-    data.fixtures.forEach(f => { state[f.id] = { d: 254, r: 0, g: 0, b: 0 } })
-    set({ fixtures: data.fixtures, groups: data.groups || [], fixtureState: state })
+    const state   = {}
+    const enabled = {}
+    const output  = {}
+    data.fixtures.forEach(f => {
+      state[f.id]   = { d: 254, r: 0, g: 0, b: 0 }
+      enabled[f.id] = true
+      output[f.id]  = { d: 0, r: 0, g: 0, b: 0 }
+    })
+    set({ fixtures: data.fixtures, groups: data.groups || [], fixtureState: state, fixtureEnabled: enabled, outputState: output })
   },
 
   saveFixtures: async (data) => {
     await window.api.saveFixtures(data)
     set(s => {
-      const next = {}
+      const next    = {}
+      const enabled = {}
+      const output  = {}
       data.fixtures.forEach(f => {
-        next[f.id] = s.fixtureState[f.id] ?? { d: 254, r: 0, g: 0, b: 0 }
+        next[f.id]    = s.fixtureState[f.id]  ?? { d: 254, r: 0, g: 0, b: 0 }
+        enabled[f.id] = s.fixtureEnabled[f.id] ?? true
+        output[f.id]  = s.outputState[f.id]   ?? { d: 0, r: 0, g: 0, b: 0 }
       })
-      return { fixtures: data.fixtures, groups: data.groups ?? [], fixtureState: next }
+      return { fixtures: data.fixtures, groups: data.groups ?? [], fixtureState: next, fixtureEnabled: enabled, outputState: output }
     })
   },
 
   setFixtureColor: (id, r, g, b) => {
     const d = Math.round(get().masterDimmer * 254)
     set(s => ({ fixtureState: { ...s.fixtureState, [id]: { d, r, g, b } } }))
-    window.api.setFixture(id, d, r, g, b)
+    if (get().fixtureEnabled[id] ?? true) {
+      get()._sendFixture(id, d, r, g, b)
+    }
   },
 
   setFixtureDimmer: (id, d) => {
     const clamped = Math.max(0, Math.min(254, Math.round(d)))
     set(s => ({ fixtureState: { ...s.fixtureState, [id]: { ...s.fixtureState[id], d: clamped } } }))
+    if (!(get().fixtureEnabled[id] ?? true)) return
     const c = get().fixtureState[id] || { r: 0, g: 0, b: 0 }
-    window.api.setFixture(id, clamped, c.r, c.g, c.b)
+    get()._sendFixture(id, clamped, c.r, c.g, c.b)
   },
 
   setGroupColor: (groupId, r, g, b) => {
     const { fixtures } = get()
     const targets = groupId === 'all' ? fixtures : fixtures.filter(f => f.group === groupId)
     targets.forEach(f => get().setFixtureColor(f.id, r, g, b))
+  },
+
+  // ── Fixture enabled state ──────────────────────────────────────────────────
+  fixtureEnabled: {}, // { [id]: boolean }
+
+  toggleFixtureEnabled: (id) => {
+    const next = !(get().fixtureEnabled[id] ?? true)
+    set(s => ({ fixtureEnabled: { ...s.fixtureEnabled, [id]: next } }))
+    if (!next) {
+      get()._sendFixture(id, 0, 0, 0, 0)
+    } else {
+      const { masterDimmer, fixtureState } = get()
+      const d = Math.round(masterDimmer * 254)
+      const c = fixtureState[id] || { r: 0, g: 0, b: 0 }
+      get()._sendFixture(id, d, c.r, c.g, c.b)
+    }
   },
 
   // ── Groups ─────────────────────────────────────────────────────────────────
@@ -86,6 +122,23 @@ const useStore = create((set, get) => ({
     const next = !get().blackoutActive
     set({ blackoutActive: next })
     window.api.setBlackout(next)
+    const { fixtures, fixtureState, fixtureEnabled, masterDimmer } = get()
+    if (next) {
+      // Reflect blackout in outputState
+      set(s => {
+        const output = { ...s.outputState }
+        fixtures.forEach(f => { output[f.id] = { d: 0, r: 0, g: 0, b: 0 } })
+        return { outputState: output }
+      })
+    } else {
+      // Re-broadcast current state so hardware and outputState are in sync
+      const d = Math.round(masterDimmer * 254)
+      fixtures.forEach(f => {
+        if (!(fixtureEnabled[f.id] ?? true)) return
+        const c = fixtureState[f.id] || { r: 0, g: 0, b: 0 }
+        get()._sendFixture(f.id, d, c.r, c.g, c.b)
+      })
+    }
   },
 
   // ── Master Dimmer ──────────────────────────────────────────────────────────
@@ -94,10 +147,11 @@ const useStore = create((set, get) => ({
   setMasterDimmer: (value) => {
     const d = Math.round(value * 254)
     set({ masterDimmer: value })
-    const { fixtures, fixtureState } = get()
+    const { fixtures, fixtureState, fixtureEnabled } = get()
     fixtures.forEach(f => {
+      if (!(fixtureEnabled[f.id] ?? true)) return
       const c = fixtureState[f.id] || { r: 0, g: 0, b: 0 }
-      window.api.setFixture(f.id, d, c.r, c.g, c.b)
+      get()._sendFixture(f.id, d, c.r, c.g, c.b)
     })
   },
 
@@ -140,8 +194,6 @@ const useStore = create((set, get) => ({
     }
 
     const startEffects = () => {
-      // Group fixtures that share the same effect+params so idx-based offsets
-      // (random flicker seed, sine phase, etc.) are restored correctly.
       const groups = new Map()
       scene.fixtures.forEach(({ id, effect, effectParams }) => {
         if (!effect) return

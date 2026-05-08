@@ -98,5 +98,16 @@
       "group": "stage_right"
     }
   ],
-  "groups": []
+  "groups": [
+    {
+      "id": "stage_left",
+      "name": "Stage Left",
+      "color": "#3B82F6"
+    },
+    {
+      "id": "stage_right",
+      "name": "Stage Right",
+      "color": "#3B82F6"
+    }
+  ]
 }
