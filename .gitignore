@@ -31,3 +31,4 @@ venv/
 # arduino test codes
 arduino/lights_114/
 arduino/sketch/
+FIXTURE_EDITOR_PLAN.md
