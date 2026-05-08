@@ -10,6 +10,8 @@ export default function EffectEngineScreen({ effectEngine }) {
   const groups                    = useStore(s => s.groups)
   const fixtureState              = useStore(s => s.fixtureState)
   const fixtureEffects            = useStore(s => s.fixtureEffects)
+  const fixtureEnabled            = useStore(s => s.fixtureEnabled)
+  const toggleFixtureEnabled      = useStore(s => s.toggleFixtureEnabled)
   const setFixtureEffect          = useStore(s => s.setFixtureEffect)
   const updateFixtureEffectParams = useStore(s => s.updateFixtureEffectParams)
   const clearFixtureEffect        = useStore(s => s.clearFixtureEffect)
@@ -129,23 +131,43 @@ export default function EffectEngineScreen({ effectEngine }) {
           {fixtures.map(f => {
             const entry   = fixtureEffects[f.id]
             const checked = selectedIds.includes(f.id)
+            const enabled = fixtureEnabled[f.id] ?? true
             const c       = fixtureState[f.id] || { d: 254, r: 0, g: 0, b: 0 }
             const dim     = (c.d ?? 254) / 254
-            const swatch  = `rgb(${Math.round(c.r*dim)},${Math.round(c.g*dim)},${Math.round(c.b*dim)})`
+            const swatch  = enabled
+              ? `rgb(${Math.round(c.r*dim)},${Math.round(c.g*dim)},${Math.round(c.b*dim)})`
+              : '#333'
             return (
-              <label key={f.id}
-                className={`flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer select-none transition-colors
-                  ${checked ? 'bg-surface-600' : 'hover:bg-surface-700'}`}>
+              <div key={f.id} className={`flex items-center gap-2 px-2 py-1.5 rounded-lg transition-colors
+                  ${checked ? 'bg-surface-600' : 'hover:bg-surface-700'}
+                  ${!enabled ? 'opacity-50' : ''}`}>
                 <input type="checkbox" checked={checked}
                   onChange={() => toggleSelect(f.id)}
-                  className="accent-accent-blue" />
+                  className="accent-accent-blue cursor-pointer" />
                 <div className="w-3 h-3 rounded-full flex-shrink-0 border border-surface-500"
                   style={{ background: swatch }} />
-                <span className="text-xs flex-1 truncate">{f.name}</span>
+                <span
+                  className="text-xs flex-1 truncate cursor-pointer select-none"
+                  onClick={() => toggleSelect(f.id)}
+                >{f.name}</span>
                 {entry && (
                   <span className="w-1.5 h-1.5 rounded-full bg-accent-blue flex-shrink-0" />
                 )}
-              </label>
+                {/* Power toggle */}
+                <button
+                  onClick={() => toggleFixtureEnabled(f.id)}
+                  title={enabled ? 'Turn off' : 'Turn on'}
+                  className={`flex-shrink-0 w-5 h-5 rounded flex items-center justify-center transition-colors
+                    ${enabled
+                      ? 'bg-green-600 hover:bg-green-500 text-white'
+                      : 'bg-surface-600 hover:bg-surface-500 text-gray-500'}`}
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
+                    strokeLinecap="round" className="w-3 h-3">
+                    <path d="M12 3v4M6.3 6.3A8 8 0 1 0 17.7 6.3" />
+                  </svg>
+                </button>
+              </div>
             )
           })}
         </div>
