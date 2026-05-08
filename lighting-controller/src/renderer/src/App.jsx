@@ -8,7 +8,7 @@ import BlackoutButton   from './components/BlackoutButton'
 import StageVisualizer  from './components/StageVisualizer'
 import SceneBrowserScreen  from './screens/SceneBrowserScreen'
 import CueListScreen       from './screens/CueListScreen'
-import EffectEngineScreen  from './screens/EffectEngineScreen'
+import LiveScreen          from './screens/LiveScreen'
 import SettingsScreen      from './screens/SettingsScreen'
 import FixtureEditorScreen from './screens/FixtureEditorScreen'
 
@@ -71,7 +71,7 @@ export default function App() {
   }, [])
 
   const screens = {
-    live:     <EffectEngineScreen effectEngine={effectEngineRef} />,
+    live:     <LiveScreen effectEngine={effectEngineRef} />,
     scenes:   <SceneBrowserScreen />,
     cues:     <CueListScreen />,
     fixtures: <FixtureEditorScreen />,
