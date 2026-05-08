@@ -28,3 +28,6 @@ CLAUDE.md
 
 venv/
 
+# arduino test codes
+arduino/lights_114/
+arduino/sketch/
