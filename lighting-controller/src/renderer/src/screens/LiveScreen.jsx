@@ -1,11 +1,11 @@
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useRef } from 'react'
 import useStore from '../store'
 import { EFFECTS } from '../engines/effect-engine'
 import ColorPicker from '../components/ColorPicker'
 
 const EFFECT_LIST = Object.entries(EFFECTS).map(([key, val]) => ({ key, name: val.name, defaultParams: val.defaultParams }))
 
-export default function EffectEngineScreen({ effectEngine }) {
+export default function LiveScreen({ effectEngine }) {
   const fixtures                  = useStore(s => s.fixtures)
   const groups                    = useStore(s => s.groups)
   const fixtureState              = useStore(s => s.fixtureState)
