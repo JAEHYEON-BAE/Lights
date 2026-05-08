@@ -3,7 +3,12 @@
 A DAW-independent live stage lighting control application for Windows and macOS.  
 Controls up to 32 RGB DMX fixtures via USB serial through an Arduino Mega.
 
+
+
+### [Visit Our Notion Page!](https://jaehyeon-bae.notion.site/Lights-Stage-Lighting-Controller-3593bacdd9ea809b8948fb5bafb7c3d4)
 ---
+
+
 
 ## Download
 
