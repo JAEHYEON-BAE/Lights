@@ -42,25 +42,33 @@ const useStore = create((set, get) => ({
   loadFixtures: (data) => {
     if (!data) return
     const state = {}
-    data.fixtures.forEach(f => { state[f.id] = { d: 254, r: 0, g: 0, b: 0 } })
-    set({ fixtures: data.fixtures, groups: data.groups || [], fixtureState: state })
+    const enabled = {}
+    data.fixtures.forEach(f => {
+      state[f.id] = { d: 254, r: 0, g: 0, b: 0 }
+      enabled[f.id] = true
+    })
+    set({ fixtures: data.fixtures, groups: data.groups || [], fixtureState: state, fixtureEnabled: enabled })
   },
 
   saveFixtures: async (data) => {
     await window.api.saveFixtures(data)
     set(s => {
       const next = {}
+      const enabled = {}
       data.fixtures.forEach(f => {
         next[f.id] = s.fixtureState[f.id] ?? { d: 254, r: 0, g: 0, b: 0 }
+        enabled[f.id] = s.fixtureEnabled[f.id] ?? true
       })
-      return { fixtures: data.fixtures, groups: data.groups ?? [], fixtureState: next }
+      return { fixtures: data.fixtures, groups: data.groups ?? [], fixtureState: next, fixtureEnabled: enabled }
     })
   },
 
   setFixtureColor: (id, r, g, b) => {
     const d = Math.round(get().masterDimmer * 254)
     set(s => ({ fixtureState: { ...s.fixtureState, [id]: { d, r, g, b } } }))
-    window.api.setFixture(id, d, r, g, b)
+    if (get().fixtureEnabled[id] ?? true) {
+      window.api.setFixture(id, d, r, g, b)
+    }
   },
 
   setFixtureDimmer: (id, d) => {
@@ -74,6 +82,24 @@ const useStore = create((set, get) => ({
     const { fixtures } = get()
     const targets = groupId === 'all' ? fixtures : fixtures.filter(f => f.group === groupId)
     targets.forEach(f => get().setFixtureColor(f.id, r, g, b))
+  },
+
+  // ── Fixture enabled state ──────────────────────────────────────────────────
+  fixtureEnabled: {}, // { [id]: boolean }
+
+  toggleFixtureEnabled: (id) => {
+    const current = get().fixtureEnabled[id] ?? true
+    const next = !current
+    set(s => ({ fixtureEnabled: { ...s.fixtureEnabled, [id]: next } }))
+    if (!next) {
+      const c = get().fixtureState[id] || { r: 0, g: 0, b: 0 }
+      window.api.setFixture(id, 0, c.r, c.g, c.b)
+    } else {
+      const { masterDimmer, fixtureState } = get()
+      const d = Math.round(masterDimmer * 254)
+      const c = fixtureState[id] || { r: 0, g: 0, b: 0 }
+      window.api.setFixture(id, d, c.r, c.g, c.b)
+    }
   },
 
   // ── Groups ─────────────────────────────────────────────────────────────────
@@ -94,8 +120,9 @@ const useStore = create((set, get) => ({
   setMasterDimmer: (value) => {
     const d = Math.round(value * 254)
     set({ masterDimmer: value })
-    const { fixtures, fixtureState } = get()
+    const { fixtures, fixtureState, fixtureEnabled } = get()
     fixtures.forEach(f => {
+      if (!(fixtureEnabled[f.id] ?? true)) return
       const c = fixtureState[f.id] || { r: 0, g: 0, b: 0 }
       window.api.setFixture(f.id, d, c.r, c.g, c.b)
     })
