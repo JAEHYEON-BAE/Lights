@@ -47,13 +47,13 @@ function FixtureTile({ fixture }) {
         {/* Power toggle bar */}
         <button
           onClick={() => toggleFixtureEnabled(fixture.id)}
-          className={`flex items-center justify-center gap-1 py-1 text-[10px] font-bold tracking-widest transition-colors
+          className={`flex items-center justify-center gap-1.5 py-2 text-xs font-bold tracking-widest transition-colors
             ${enabled
-              ? 'bg-green-700/60 hover:bg-green-600/70 text-green-200'
-              : 'bg-surface-800 hover:bg-surface-700 text-gray-500'}`}
+              ? 'bg-green-600 hover:bg-green-500 text-white'
+              : 'bg-surface-700 hover:bg-surface-600 text-gray-400'}`}
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
-            strokeLinecap="round" className="w-3 h-3">
+            strokeLinecap="round" className="w-3.5 h-3.5">
             <path d="M12 3v4M6.3 6.3A8 8 0 1 0 17.7 6.3" />
           </svg>
           {enabled ? 'ON' : 'OFF'}
