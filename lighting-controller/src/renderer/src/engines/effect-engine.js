@@ -47,9 +47,10 @@ export const EFFECTS = {
   },
   colorWave: {
     name: 'Color Wave',
-    defaultParams: { speed: 0.5, phaseOffset: 30, hue1: 180, hue2: 270, direction: 'short' },
+    defaultParams: { speed: 0.5, phaseOffset: 30, hue1: 180, hue2: 270, direction: 'short', pulseAmount: 0, pulseSpeed: 1 },
     tick(fixtures, time, params) {
       const freq = params.speed / 1000
+      const pulseFreq = params.pulseSpeed / 1000
       const cwDelta = ((params.hue2 - params.hue1) % 360 + 360) % 360
       const delta = params.direction === 'short'
         ? (cwDelta <= 180 ? cwDelta : cwDelta - 360)
@@ -58,7 +59,23 @@ export const EFFECTS = {
         const phase = freq * time * Math.PI * 2 + idx * (params.phaseOffset * Math.PI / 180)
         const t = (Math.sin(phase) + 1) / 2
         const hue = ((params.hue1 + delta * t) % 360 + 360) % 360
-        return { id, ...hsvToRgb(hue, 1.0, 1.0) }
+        const pulsePhase = pulseFreq * time * Math.PI * 2 + idx * (params.phaseOffset * Math.PI / 180)
+        const dimmer = Math.round(((1 - params.pulseAmount) + params.pulseAmount * (Math.sin(pulsePhase) + 1) / 2) * 254)
+        return { id, ...hsvToRgb(hue, 1.0, 1.0), dimmer }
+      })
+    }
+  },
+  colorStep: {
+    name: 'Color Step',
+    defaultParams: { speed: 1, phaseOffset: 0, hues: [0, 120, 240] },
+    tick(fixtures, time, params) {
+      const { speed, phaseOffset, hues } = params
+      if (!hues || hues.length === 0) return []
+      const period = 1000 / speed
+      return fixtures.map((id, idx) => {
+        const adjustedTime = time - idx * phaseOffset
+        const colorIndex = ((Math.floor(adjustedTime / period) % hues.length) + hues.length) % hues.length
+        return { id, ...hsvToRgb(hues[colorIndex], 1.0, 1.0) }
       })
     }
   },
@@ -171,10 +188,11 @@ export class EffectEngine {
       if (!effect) return
       const results = effect.tick(ids, now - startTime, params)
       results.forEach(result => {
+        if (result.r !== undefined) {
+          this.setFixtureColor(result.id, result.r, result.g, result.b)
+        }
         if (result.dimmer !== undefined) {
           this.setFixtureDimmer(result.id, result.dimmer)
-        } else {
-          this.setFixtureColor(result.id, result.r, result.g, result.b)
         }
       })
     })

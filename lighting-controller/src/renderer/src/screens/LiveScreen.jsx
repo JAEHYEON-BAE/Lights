@@ -281,6 +281,61 @@ export default function LiveScreen({ effectEngine }) {
                   ))}
                 </div>
               )}
+              {'pulseAmount' in params && (
+                <div className="mt-3">
+                  <label className="text-xs text-gray-500 block mb-1">
+                    Pulse Amount: {Math.round(params.pulseAmount * 100)}%
+                  </label>
+                  <input type="range" min="0" max="1" step="0.01"
+                    value={params.pulseAmount}
+                    onChange={e => setParam('pulseAmount', +e.target.value)}
+                    className="w-full" />
+                </div>
+              )}
+              {'pulseSpeed' in params && params.pulseAmount > 0 && (
+                <div className="mt-2">
+                  <label className="text-xs text-gray-500 block mb-1">
+                    Pulse Speed: {params.pulseSpeed.toFixed(1)}
+                  </label>
+                  <input type="range" min="0.1" max="10" step="0.1"
+                    value={params.pulseSpeed}
+                    onChange={e => setParam('pulseSpeed', +e.target.value)}
+                    className="w-full" />
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Hue List (colorStep) */}
+          {'hues' in params && (
+            <div>
+              <label className="text-xs text-gray-500 block mb-2">Colors</label>
+              {params.hues.map((hue, i) => (
+                <div key={i} className="flex items-center gap-2 mb-2">
+                  <div className="w-8 h-6 rounded border border-surface-600 flex-shrink-0"
+                    style={{ background: `hsl(${hue},100%,50%)` }} />
+                  <input type="range" min="0" max="359" step="1"
+                    value={hue}
+                    style={{ background: 'linear-gradient(to right,hsl(0,100%,50%),hsl(60,100%,50%),hsl(120,100%,50%),hsl(180,100%,50%),hsl(240,100%,50%),hsl(300,100%,50%),hsl(360,100%,50%))' }}
+                    onChange={e => {
+                      const next = [...params.hues]
+                      next[i] = +e.target.value
+                      setParam('hues', next)
+                    }}
+                    className="flex-1" />
+                  <span className="text-xs text-gray-500 w-8 text-right">{hue}°</span>
+                  {params.hues.length > 1 && (
+                    <button
+                      onClick={() => setParam('hues', params.hues.filter((_, j) => j !== i))}
+                      className="text-gray-500 hover:text-red-400 text-xs px-1">✕</button>
+                  )}
+                </div>
+              ))}
+              <button
+                onClick={() => setParam('hues', [...params.hues, (params.hues[params.hues.length - 1] + 60) % 360])}
+                className="w-full mt-1 py-1 rounded-lg text-xs bg-surface-700 text-gray-400 hover:bg-surface-600 transition-colors">
+                + Add Color
+              </button>
             </div>
           )}
 
