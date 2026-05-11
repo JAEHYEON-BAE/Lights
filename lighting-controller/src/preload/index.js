@@ -30,4 +30,9 @@ contextBridge.exposeInMainWorld('api', {
   loadCueList:  ()     => ipcRenderer.invoke('file:load-cueList'),
   saveCueList:  (cl)   => ipcRenderer.invoke('file:save-cueList', cl),
   saveFixtures: (data) => ipcRenderer.invoke('file:save-fixtures', data),
+
+  // Shows (BPM sync)
+  loadShows:  ()       => ipcRenderer.invoke('file:load-shows'),
+  saveShow:   (show)   => ipcRenderer.invoke('file:save-show', show),
+  deleteShow: (showId) => ipcRenderer.invoke('file:delete-show', showId),
 })

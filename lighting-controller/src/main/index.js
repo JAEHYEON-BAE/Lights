@@ -146,3 +146,28 @@ ipcMain.handle('file:save-cueList', (_, cueList) => {
   writeFileSync(join(resourcesDir, 'cue-list.json'), JSON.stringify(cueList, null, 2))
   return true
 })
+
+ipcMain.handle('file:load-shows', () => {
+  const dir = join(resourcesDir, 'shows')
+  ensureDir(dir)
+  return readdirSync(dir)
+    .filter(f => f.endsWith('.json'))
+    .map(f => {
+      try { return JSON.parse(readFileSync(join(dir, f), 'utf-8')) }
+      catch { return null }
+    })
+    .filter(Boolean)
+})
+
+ipcMain.handle('file:save-show', (_, show) => {
+  const dir = join(resourcesDir, 'shows')
+  ensureDir(dir)
+  writeFileSync(join(dir, `${show.show_id}.json`), JSON.stringify(show, null, 2))
+  return true
+})
+
+ipcMain.handle('file:delete-show', (_, showId) => {
+  const p = join(resourcesDir, 'shows', `${showId}.json`)
+  if (existsSync(p)) unlinkSync(p)
+  return true
+})

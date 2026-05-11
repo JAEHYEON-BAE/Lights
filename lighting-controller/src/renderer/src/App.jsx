@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from 'react'
 import useStore from './store'
 import { FadeEngine }   from './engines/fade-engine'
 import { EffectEngine } from './engines/effect-engine'
+import { BpmEngine }    from './engines/bpm-engine'
 import Sidebar          from './components/Sidebar'
 import StatusBar        from './components/StatusBar'
 import BlackoutButton   from './components/BlackoutButton'
@@ -11,6 +12,7 @@ import CueListScreen       from './screens/CueListScreen'
 import LiveScreen          from './screens/LiveScreen'
 import SettingsScreen      from './screens/SettingsScreen'
 import FixtureEditorScreen from './screens/FixtureEditorScreen'
+import ShowScreen          from './screens/ShowScreen'
 
 export default function App() {
   const activeScreen       = useStore(s => s.activeScreen)
@@ -23,6 +25,10 @@ export default function App() {
   const loadCueList        = useStore(s => s.loadCueList)
   const setFadeEngine      = useStore(s => s.setFadeEngine)
   const setEffectEngine    = useStore(s => s.setEffectEngine)
+  const setBpmEngine       = useStore(s => s.setBpmEngine)
+  const loadShows          = useStore(s => s.loadShows)
+  const updateRunnerState  = useStore(s => s.updateRunnerState)
+  const recallScene        = useStore(s => s.recallScene)
   const setFixtureColor    = useStore(s => s.setFixtureColor)
   const setFixtureDimmer   = useStore(s => s.setFixtureDimmer)
   const clearAllEffects    = useStore(s => s.clearAllEffects)
@@ -31,6 +37,7 @@ export default function App() {
   const goPrevCue          = useStore(s => s.goPrevCue)
 
   const effectEngineRef = useRef(null)
+  const bpmEngineRef    = useRef(null)
 
   // Bootstrap
   useEffect(() => {
@@ -41,10 +48,31 @@ export default function App() {
     effectEngineRef.current = effectEng
     setEffectEngine(effectEng)
 
+    const bpmEng = new BpmEngine({
+      onRecallScene: (sceneId, fadeMs) => recallScene(sceneId, fadeMs),
+      onBreakpoint:  (item) => {
+        if (!item.scene_id) {
+          // No scene assigned — stop all effects first, then apply static white at 50% dimmer
+          const state = useStore.getState()
+          state.effectEngine?.clearAll()
+          state.clearAllEffects()
+          state.fixtures.forEach(f => {
+            state.setFixtureColor(f.id, 255, 255, 255)
+            state.setFixtureDimmer(f.id, 127)
+          })
+        }
+      },
+      onShowEnd:     () => {},
+      onStateUpdate: (patch) => updateRunnerState(patch),
+    })
+    bpmEngineRef.current = bpmEng
+    setBpmEngine(bpmEng)
+
     // Load initial data
     window.api.loadFixtures().then(loadFixtures)
     window.api.loadScenes().then(loadScenes)
     window.api.loadCueList().then(loadCueList)
+    window.api.loadShows().then(loadShows)
 
     // Serial events
     window.api.onConnected(setConnected)
@@ -55,25 +83,40 @@ export default function App() {
     return () => {
       fadeEng.destroy()
       effectEng.destroy()
+      bpmEng.destroy()
     }
   }, [])
 
-  // Global keyboard shortcuts
+  // Global keyboard shortcuts — capture phase, stopPropagation prevents double-fire
+  // when a BUTTON/BlackoutButton has focus (Space would both toggle blackout AND click the button)
   useEffect(() => {
     const handler = (e) => {
-      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return
-      if (e.code === 'Space') { e.preventDefault(); toggleBlackout() }
-      if (e.code === 'Enter') { e.preventDefault(); goNextCue() }
+      if (e.repeat) return
+      const tag = e.target.tagName
+      const isText = tag === 'INPUT' || tag === 'TEXTAREA'
+      if (e.code === 'Space' && !isText) {
+        e.preventDefault()
+        e.stopPropagation()           // stops event reaching focused button → no double-toggle
+        e.stopImmediatePropagation()  // stops other window-level capture listeners
+        useStore.getState().toggleBlackout()
+        return
+      }
+      if (isText || tag === 'SELECT' || tag === 'BUTTON') return
+      // Cue navigation only fires on screens where it makes sense
+      const screen = useStore.getState().activeScreen
+      if (screen !== 'live' && screen !== 'cues') return
+      if (e.code === 'Enter')     { e.preventDefault(); goNextCue() }
       if (e.code === 'Backspace') { e.preventDefault(); goPrevCue() }
     }
-    window.addEventListener('keydown', handler)
-    return () => window.removeEventListener('keydown', handler)
-  }, [])
+    window.addEventListener('keydown', handler, true)
+    return () => window.removeEventListener('keydown', handler, true)
+  }, [goNextCue, goPrevCue])
 
   const screens = {
     live:     <LiveScreen effectEngine={effectEngineRef} />,
     scenes:   <SceneBrowserScreen />,
     cues:     <CueListScreen />,
+    show:     <ShowScreen bpmEngine={bpmEngineRef} />,
     fixtures: <FixtureEditorScreen />,
     settings: <SettingsScreen />,
   }

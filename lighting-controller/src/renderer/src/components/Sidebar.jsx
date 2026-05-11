@@ -5,6 +5,7 @@ const NAV = [
   { id: 'live',     label: 'Live',     icon: '✦' },
   { id: 'scenes',   label: 'Scenes',   icon: '▤' },
   { id: 'cues',     label: 'Cue List', icon: '▶' },
+  { id: 'show',     label: 'Show',     icon: '♩' },
   { id: 'fixtures', label: 'Fixtures', icon: '◉' },
   { id: 'settings', label: 'Settings', icon: '⚙' },
 ]

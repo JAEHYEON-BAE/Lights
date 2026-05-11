@@ -287,6 +287,47 @@ const useStore = create((set, get) => ({
 
   clearAllEffects: () => set({ fixtureEffects: {} }),
 
+  // ── Shows (BPM Sync) ───────────────────────────────────────────────────────
+  shows: [],
+  activeShowId: null,
+  activeShow: null,
+
+  runnerState: {
+    status: 'stopped',           // 'stopped' | 'running' | 'breakpoint' | 'ended'
+    currentSetlistIndex: -1,
+    currentSongId: null,
+    currentSegmentIndex: -1,
+    currentBpm: 0,
+    elapsedBarsInSegment: 0,
+    totalBarsInSegment: 0,
+  },
+
+  loadShows: (shows) => set({ shows }),
+
+  saveShow: async (show) => {
+    await window.api.saveShow(show)
+    set(s => {
+      const others = s.shows.filter(x => x.show_id !== show.show_id)
+      return { shows: [...others, show], activeShow: show, activeShowId: show.show_id }
+    })
+  },
+
+  deleteShow: async (showId) => {
+    await window.api.deleteShow(showId)
+    set(s => ({
+      shows: s.shows.filter(x => x.show_id !== showId),
+      activeShow: s.activeShowId === showId ? null : s.activeShow,
+      activeShowId: s.activeShowId === showId ? null : s.activeShowId,
+    }))
+  },
+
+  setActiveShow: (show) => set({ activeShow: show, activeShowId: show?.show_id ?? null }),
+
+  updateRunnerState: (patch) => set(s => ({ runnerState: { ...s.runnerState, ...patch } })),
+
+  bpmEngine: null,
+  setBpmEngine: (engine) => set({ bpmEngine: engine }),
+
   // ── UI ─────────────────────────────────────────────────────────────────────
   activeScreen: 'live',
   setActiveScreen: (screen) => set({ activeScreen: screen }),
