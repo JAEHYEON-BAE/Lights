@@ -14,6 +14,12 @@ function emptySegment() {
   return { segment_id: newSegId(), name: '', scene_id: null, bars: 8, fade_in_ms: 250 }
 }
 
+// Format bar counts: integers as "4", fractions as "4.5" (no trailing zeros)
+function fmtBars(n) {
+  if (n == null || isNaN(n)) return '0'
+  return Number.isInteger(n) ? String(n) : parseFloat(n.toFixed(3)).toString()
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 export default function ShowScreen({ bpmEngine }) {
   const shows             = useStore(s => s.shows)
@@ -37,6 +43,8 @@ export default function ShowScreen({ bpmEngine }) {
   const [show,           setShow]           = useState(() => activeShow ? structuredClone(activeShow) : null)
   const [selectedSongId, setSelectedSongId] = useState(null)
   const [isDirty,        setIsDirty]        = useState(false)
+  const [setlistDrag,    setSetlistDrag]    = useState({ src: null, over: null, pos: null })
+  const [segDrag,        setSegDrag]        = useState({ src: null, over: null, pos: null })
 
   // When a show is selected from dropdown or saved externally, sync local copy (only when idle)
   useEffect(() => {
@@ -143,11 +151,11 @@ export default function ShowScreen({ bpmEngine }) {
   }
 
   // ── Setlist reorder ───────────────────────────────────────────────────────────
-  function handleMoveSetlistItem(index, dir) {
+  function handleReorderSetlist(from, to) {
+    if (from === to) return
     updateShow(draft => {
-      const target = index + dir
-      if (target < 0 || target >= draft.setlist.length) return
-      ;[draft.setlist[index], draft.setlist[target]] = [draft.setlist[target], draft.setlist[index]]
+      const item = draft.setlist.splice(from, 1)[0]
+      draft.setlist.splice(from < to ? to - 1 : to, 0, item)
     })
   }
 
@@ -169,12 +177,12 @@ export default function ShowScreen({ bpmEngine }) {
     })
   }
 
-  function handleMoveSegment(songId, index, dir) {
+  function handleReorderSegment(songId, from, to) {
+    if (from === to) return
     updateShow(draft => {
       const segs = draft.songs[songId].segments
-      const target = index + dir
-      if (target < 0 || target >= segs.length) return
-      ;[segs[index], segs[target]] = [segs[target], segs[index]]
+      const item = segs.splice(from, 1)[0]
+      segs.splice(from < to ? to - 1 : to, 0, item)
     })
   }
 
@@ -304,18 +312,44 @@ export default function ShowScreen({ bpmEngine }) {
               )}
 
               {show.setlist.map((item, idx) => {
-                const isCurrent = idx === currentSetlistIndex
-                const isDone    = idx < currentSetlistIndex
+                const isCurrent  = idx === currentSetlistIndex
+                const isDone     = idx < currentSetlistIndex
+                const isOver = isIdle && setlistDrag.over === idx && setlistDrag.src !== idx
+                const dropIndicator = isOver
+                  ? (setlistDrag.pos === 'top' ? 'border-t-2 border-accent-blue' : 'border-b-2 border-accent-blue')
+                  : ''
+
+                // Shared drag props for each setlist item wrapper
+                const dragProps = isIdle ? {
+                  draggable: true,
+                  onDragStart: e => { e.dataTransfer.effectAllowed = 'move'; setSetlistDrag({ src: idx, over: null, pos: null }) },
+                  onDragOver: e => {
+                    e.preventDefault()
+                    const mid = e.currentTarget.getBoundingClientRect().top + e.currentTarget.getBoundingClientRect().height / 2
+                    setSetlistDrag(d => ({ ...d, over: idx, pos: e.clientY < mid ? 'top' : 'bottom' }))
+                  },
+                  onDrop: e => {
+                    e.preventDefault()
+                    if (setlistDrag.src !== null) {
+                      const to = setlistDrag.pos === 'top' ? idx : idx + 1
+                      handleReorderSetlist(setlistDrag.src, to)
+                    }
+                    setSetlistDrag({ src: null, over: null, pos: null })
+                  },
+                  onDragEnd: () => setSetlistDrag({ src: null, over: null, pos: null }),
+                } : {}
 
                 if (item.type === 'song') {
                   const song       = show.songs[item.song_id]
                   const isSelected = isIdle && selectedSongId === item.song_id
 
                   return (
-                    <div key={item.song_id}>
+                    <div key={item.song_id} {...dragProps} className={dropIndicator}>
                       <div
                         onClick={() => handleSetlistItemClick(idx)}
-                        className={`flex items-center gap-1 p-2 rounded cursor-pointer text-sm transition-colors ${
+                        className={`flex items-center gap-1 p-2 rounded text-sm transition-colors ${
+                          isIdle ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'
+                        } ${
                           isCurrent   ? 'bg-accent-blue text-white' :
                           isSelected  ? 'bg-accent-blue/60 text-white' :
                           isDone      ? 'bg-surface-800 text-gray-500 hover:bg-surface-700' :
@@ -327,23 +361,29 @@ export default function ShowScreen({ bpmEngine }) {
                             {isDone ? '✓' : isCurrent ? '▶' : ''}
                           </span>
                         )}
+                        {isIdle && <span className="text-gray-500 select-none mr-0.5 shrink-0">⠿</span>}
                         <span className="flex-1 truncate">♩ {song?.name ?? '(삭제된 곡)'}</span>
-                        <span className="text-[10px] text-gray-400 tabular-nums shrink-0">{song?.bpm}</span>
+                        {song && (() => {
+                          const mins = song.segments.reduce((s, seg) => s + seg.bars * (60000 / song.bpm) * song.beats_per_bar, 0) / 60000
+                          return <span className="text-[10px] text-gray-500 tabular-nums shrink-0">{mins.toFixed(2)} min</span>
+                        })()}
                         {isIdle && (
-                          <>
-                            <div className="flex flex-col shrink-0">
-                              <button onClick={e => { e.stopPropagation(); handleMoveSetlistItem(idx, -1) }} className="text-[10px] leading-none text-gray-400 hover:text-white">▲</button>
-                              <button onClick={e => { e.stopPropagation(); handleMoveSetlistItem(idx,  1) }} className="text-[10px] leading-none text-gray-400 hover:text-white">▼</button>
-                            </div>
-                            <button onClick={e => { e.stopPropagation(); handleRemoveSong(item.song_id) }} className="text-gray-500 hover:text-red-400 text-xs shrink-0">✕</button>
-                          </>
+                          <button
+                            onClick={e => { e.stopPropagation(); handleRemoveSong(item.song_id) }}
+                            className="text-gray-500 hover:text-red-400 text-xs shrink-0"
+                          >✕</button>
                         )}
                       </div>
 
                       {/* Insert breakpoint button — edit mode only */}
                       {isIdle && (
                         <div className="flex justify-center my-0.5">
-                          <button onClick={() => handleAddBreakpoint(idx)} className="text-[10px] text-gray-600 hover:text-yellow-400 px-2" title="멘트 삽입">+ 멘트</button>
+                          <button
+                            onDragOver={e => e.stopPropagation()}
+                            onClick={() => handleAddBreakpoint(idx)}
+                            className="text-[10px] text-gray-600 hover:text-yellow-400 px-2"
+                            title="멘트 삽입"
+                          >+ 멘트</button>
                         </div>
                       )}
                     </div>
@@ -351,22 +391,18 @@ export default function ShowScreen({ bpmEngine }) {
                 } else {
                   // breakpoint
                   return (
-                    <div key={item.breakpoint_id}>
+                    <div key={item.breakpoint_id} {...dragProps} className={dropIndicator}>
                       {isIdle ? (
                         /* Edit mode: editable breakpoint card */
                         <div className="rounded bg-yellow-900/30 border border-yellow-700/40 px-2 py-1.5 text-xs text-yellow-300 flex flex-col gap-1">
                           <div className="flex items-center gap-1">
-                            <span className="opacity-60">⏸</span>
+                            <span className="cursor-grab text-yellow-700 select-none shrink-0">⠿</span>
                             <input
                               className="flex-1 bg-transparent outline-none text-yellow-200 placeholder-yellow-600 font-medium"
                               value={item.name}
                               onChange={e => handleBpField(item.breakpoint_id, 'name', e.target.value)}
                               placeholder="멘트명"
                             />
-                            <div className="flex flex-col">
-                              <button onClick={() => handleMoveSetlistItem(idx, -1)} className="text-[10px] leading-none text-yellow-600 hover:text-yellow-300">▲</button>
-                              <button onClick={() => handleMoveSetlistItem(idx,  1)} className="text-[10px] leading-none text-yellow-600 hover:text-yellow-300">▼</button>
-                            </div>
                             <button onClick={() => handleRemoveBreakpoint(item.breakpoint_id)} className="text-yellow-700 hover:text-red-400 ml-1">✕</button>
                           </div>
                           <div className="flex items-center gap-1 pl-3">
@@ -409,7 +445,12 @@ export default function ShowScreen({ bpmEngine }) {
 
                       {isIdle && (
                         <div className="flex justify-center my-0.5">
-                          <button onClick={() => handleAddBreakpoint(idx)} className="text-[10px] text-gray-600 hover:text-yellow-400 px-2" title="멘트 삽입">+ 멘트</button>
+                          <button
+                            onDragOver={e => e.stopPropagation()}
+                            onClick={() => handleAddBreakpoint(idx)}
+                            className="text-[10px] text-gray-600 hover:text-yellow-400 px-2"
+                            title="멘트 삽입"
+                          >+ 멘트</button>
                         </div>
                       )}
                     </div>
@@ -464,7 +505,9 @@ export default function ShowScreen({ bpmEngine }) {
                 <div>
                   <div className="flex justify-between text-xs text-gray-400 mb-1">
                     <span>마디 진행</span>
-                    <span className="tabular-nums">{elapsedBarsInSegment} / {totalBarsInSegment}마디 (남은 마디: {barsLeft})</span>
+                    <span className="tabular-nums">
+                      {Math.floor(elapsedBarsInSegment)} / {fmtBars(totalBarsInSegment)}마디
+                    </span>
                   </div>
                   <div className="h-3 bg-surface-700 rounded-full overflow-hidden">
                     <div className="h-full bg-accent-blue rounded-full transition-all duration-100" style={{ width: `${barPct * 100}%` }} />
@@ -474,7 +517,7 @@ export default function ShowScreen({ bpmEngine }) {
                   <div className="flex items-center justify-between text-xs text-gray-500">
                     <span>다음</span>
                     <span>
-                      {nextSeg.name ? `${nextSeg.name} — ` : ''}{nextScene?.name ?? '(Scene 없음)'} ({barsLeft}마디 후)
+                      {nextSeg.name ? `${nextSeg.name} — ` : ''}{nextScene?.name ?? '(Scene 없음)'} ({fmtBars(barsLeft)}마디 후)
                     </span>
                   </div>
                 )}
@@ -520,10 +563,12 @@ export default function ShowScreen({ bpmEngine }) {
                     <label className="flex items-center gap-1 text-sm text-gray-300">
                       BPM
                       <input
+                        key={selectedSongId + '-bpm'}
                         type="number" min="40" max="300"
                         className="w-16 bg-surface-700 border border-surface-600 rounded px-2 py-1 text-sm text-white text-right"
-                        value={selectedSong.bpm}
-                        onChange={e => handleSongField(selectedSongId, 'bpm', Math.max(40, Math.min(300, Number(e.target.value))))}
+                        defaultValue={selectedSong.bpm}
+                        onBlur={e => handleSongField(selectedSongId, 'bpm', Math.max(40, Math.min(300, Number(e.target.value) || 120)))}
+                        onKeyDown={e => e.key === 'Enter' && e.target.blur()}
                       />
                     </label>
                     <label className="flex items-center gap-1 text-sm text-gray-300">
@@ -544,9 +589,34 @@ export default function ShowScreen({ bpmEngine }) {
                   {/* Segment table */}
                   <div className="text-xs text-gray-400 uppercase tracking-widest">Segments</div>
                   <div className="flex flex-col gap-1">
-                    {selectedSong.segments.map((seg, segIdx) => (
-                      <div key={seg.segment_id} className="flex items-center gap-2 bg-surface-700 rounded px-3 py-2 text-sm">
-                        <span className="text-gray-500 w-5 text-right text-xs shrink-0">{segIdx + 1}</span>
+                    {selectedSong.segments.map((seg, segIdx) => {
+                      const isSegOver   = segDrag.over === segIdx && segDrag.src !== segIdx
+                      const segDropLine = isSegOver
+                        ? (segDrag.pos === 'top' ? ' border-t-2 border-accent-blue' : ' border-b-2 border-accent-blue')
+                        : ''
+                      return (
+                      <div
+                        key={seg.segment_id}
+                        draggable
+                        onDragStart={e => { e.dataTransfer.effectAllowed = 'move'; setSegDrag({ src: segIdx, over: null, pos: null }) }}
+                        onDragOver={e => {
+                          e.preventDefault()
+                          const mid = e.currentTarget.getBoundingClientRect().top + e.currentTarget.getBoundingClientRect().height / 2
+                          setSegDrag(d => ({ ...d, over: segIdx, pos: e.clientY < mid ? 'top' : 'bottom' }))
+                        }}
+                        onDrop={e => {
+                          e.preventDefault()
+                          if (segDrag.src !== null) {
+                            const to = segDrag.pos === 'top' ? segIdx : segIdx + 1
+                            handleReorderSegment(selectedSongId, segDrag.src, to)
+                          }
+                          setSegDrag({ src: null, over: null, pos: null })
+                        }}
+                        onDragEnd={() => setSegDrag({ src: null, over: null, pos: null })}
+                        className={`flex items-center gap-2 bg-surface-700 rounded px-3 py-2 text-sm cursor-grab active:cursor-grabbing${segDropLine}`}
+                      >
+                        <span className="text-gray-500 select-none shrink-0">⠿</span>
+                        <span className="text-gray-500 w-4 text-right text-xs shrink-0">{segIdx + 1}</span>
                         <input
                           className="w-24 bg-surface-800 border border-surface-600 rounded px-2 py-1 text-xs text-gray-200 placeholder-gray-600"
                           value={seg.name ?? ''}
@@ -564,10 +634,12 @@ export default function ShowScreen({ bpmEngine }) {
                         <label className="flex items-center gap-1 text-gray-400 text-xs whitespace-nowrap">
                           마디
                           <input
-                            type="number" min="1" max="999"
-                            className="w-14 bg-surface-800 border border-surface-600 rounded px-2 py-1 text-sm text-white text-right"
-                            value={seg.bars}
-                            onChange={e => handleSegmentField(selectedSongId, seg.segment_id, 'bars', Math.max(1, Number(e.target.value)))}
+                            key={seg.segment_id + '-bars'}
+                            type="number" min="0.25" max="999" step="0.25"
+                            className="w-16 bg-surface-800 border border-surface-600 rounded px-2 py-1 text-sm text-white text-right"
+                            defaultValue={seg.bars}
+                            onBlur={e => handleSegmentField(selectedSongId, seg.segment_id, 'bars', Math.max(0.25, parseFloat(e.target.value) || 0.25))}
+                            onKeyDown={e => e.key === 'Enter' && e.target.blur()}
                           />
                         </label>
                         <label className="flex items-center gap-1 text-gray-400 text-xs whitespace-nowrap">
@@ -583,13 +655,10 @@ export default function ShowScreen({ bpmEngine }) {
                         <span className="text-gray-500 text-xs w-14 text-right whitespace-nowrap">
                           {((seg.bars * (60000 / selectedSong.bpm) * selectedSong.beats_per_bar) / 1000).toFixed(1)}s
                         </span>
-                        <div className="flex flex-col">
-                          <button onClick={() => handleMoveSegment(selectedSongId, segIdx, -1)} className="text-[10px] leading-none text-gray-500 hover:text-white">▲</button>
-                          <button onClick={() => handleMoveSegment(selectedSongId, segIdx,  1)} className="text-[10px] leading-none text-gray-500 hover:text-white">▼</button>
-                        </div>
                         <button onClick={() => handleRemoveSegment(selectedSongId, seg.segment_id)} className="text-gray-600 hover:text-red-400 text-xs">✕</button>
                       </div>
-                    ))}
+                      )
+                    })}
                     <button
                       onClick={() => handleAddSegment(selectedSongId)}
                       className="text-sm text-gray-400 hover:text-white border border-dashed border-surface-600 hover:border-surface-400 rounded px-3 py-2 transition-colors"
@@ -600,7 +669,7 @@ export default function ShowScreen({ bpmEngine }) {
                     <div className="text-xs text-gray-500 mt-1">
                       총 길이:{' '}
                       {(selectedSong.segments.reduce((s, seg) => s + seg.bars, 0) * (60000 / selectedSong.bpm) * selectedSong.beats_per_bar / 1000).toFixed(1)}s
-                      ({selectedSong.segments.reduce((s, seg) => s + seg.bars, 0)}마디)
+                      ({fmtBars(selectedSong.segments.reduce((s, seg) => s + seg.bars, 0))}마디)
                     </div>
                   )}
                 </>

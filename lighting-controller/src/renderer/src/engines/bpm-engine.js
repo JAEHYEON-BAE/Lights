@@ -87,17 +87,19 @@ export class BpmEngine {
     const segment = this._currentSong.segments[this._currentSegmentIndex]
     if (!segment) return
 
-    const barDurationMs = (60000 / this._currentSong.bpm) * this._currentSong.beats_per_bar
-    const elapsedMs     = performance.now() - this._segmentStartTime
-    const elapsedBars   = Math.floor(elapsedMs / barDurationMs)
+    const barDurationMs  = (60000 / this._currentSong.bpm) * this._currentSong.beats_per_bar
+    const elapsedMs      = performance.now() - this._segmentStartTime
+    const elapsedBars    = elapsedMs / barDurationMs  // float — supports fractional bars
 
-    // Push progress update (throttled — only when bar count changes)
-    if (elapsedBars !== this._lastElapsedBars) {
-      this._lastElapsedBars = elapsedBars
+    // Throttle state pushes: update once per whole bar (display uses the exact float value)
+    const wholeBar = Math.floor(elapsedBars)
+    if (wholeBar !== this._lastElapsedBars) {
+      this._lastElapsedBars = wholeBar
       this._pushState({ elapsedBarsInSegment: elapsedBars })
     }
 
-    if (elapsedBars >= segment.bars) {
+    // Compare via multiplication to avoid float division precision issues
+    if (elapsedMs >= segment.bars * barDurationMs) {
       this._advanceSegment()
     }
   }
