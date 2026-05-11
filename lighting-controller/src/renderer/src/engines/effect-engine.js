@@ -31,25 +31,27 @@ export const EFFECTS = {
   },
   sinePulse: {
     name: 'Sine Pulse',
-    defaultParams: { speed: 1, r: 0, g: 100, b: 255, phaseOffset: 0, minBrightness: 0 },
+    defaultParams: { speed: 1, r: 0, g: 100, b: 255, phaseOffset: 0, minBrightness: 0, maxBrightness: 1 },
     init(fixtures, params, setFixture) {
       fixtures.forEach(id => setFixture(id, 254, params.r, params.g, params.b))
     },
     tick(fixtures, time, params) {
       const minDim = Math.round(params.minBrightness * 254)
+      const maxDim = Math.round((params.maxBrightness ?? 1) * 254)
       return fixtures.map((id, idx) => {
         const phase = (idx * params.phaseOffset * Math.PI) / 180
         const v = (Math.sin(2 * Math.PI * (params.speed / 1000) * time + phase) + 1) / 2
-        return { id, dimmer: Math.round(minDim + v * (254 - minDim)) }
+        return { id, dimmer: Math.round(minDim + v * (maxDim - minDim)) }
       })
     }
   },
   colorWave: {
     name: 'Color Wave',
-    defaultParams: { speed: 0.5, phaseOffset: 30, hue1: 180, hue2: 270, direction: 'short', pulseAmount: 0, pulseSpeed: 1 },
+    defaultParams: { speed: 0.5, phaseOffset: 30, hue1: 180, hue2: 270, direction: 'short', pulseAmount: 0, pulseSpeed: 1, maxBrightness: 1 },
     tick(fixtures, time, params) {
-      const freq = params.speed / 1000
+      const freq      = params.speed / 1000
       const pulseFreq = params.pulseSpeed / 1000
+      const maxDim    = Math.round((params.maxBrightness ?? 1) * 254)
       const cwDelta = ((params.hue2 - params.hue1) % 360 + 360) % 360
       const delta = params.direction === 'short'
         ? (cwDelta <= 180 ? cwDelta : cwDelta - 360)
@@ -59,7 +61,8 @@ export const EFFECTS = {
         const t = (Math.sin(phase) + 1) / 2
         const hue = ((params.hue1 + delta * t) % 360 + 360) % 360
         const pulsePhase = pulseFreq * time * Math.PI * 2 + idx * (params.phaseOffset * Math.PI / 180)
-        const dimmer = Math.round(((1 - params.pulseAmount) + params.pulseAmount * (Math.sin(pulsePhase) + 1) / 2) * 254)
+        const pulseLevel = (1 - params.pulseAmount) + params.pulseAmount * (Math.sin(pulsePhase) + 1) / 2
+        const dimmer = Math.round(pulseLevel * maxDim)
         return { id, ...hsvToRgb(hue, 1.0, 1.0), dimmer }
       })
     }

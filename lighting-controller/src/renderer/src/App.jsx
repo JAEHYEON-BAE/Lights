@@ -6,7 +6,6 @@ import { BpmEngine }       from './engines/bpm-engine'
 import { MetronomeEngine } from './engines/metronome-engine'
 import Sidebar          from './components/Sidebar'
 import StatusBar        from './components/StatusBar'
-import BlackoutButton   from './components/BlackoutButton'
 import Toast           from './components/Toast'
 import StageVisualizer  from './components/StageVisualizer'
 import SceneBrowserScreen  from './screens/SceneBrowserScreen'
@@ -32,9 +31,9 @@ export default function App() {
   const updateRunnerState  = useStore(s => s.updateRunnerState)
   const recallScene        = useStore(s => s.recallScene)
   const clearAllEffects    = useStore(s => s.clearAllEffects)
-  const toggleBlackout     = useStore(s => s.toggleBlackout)
   const goNextCue          = useStore(s => s.goNextCue)
   const goPrevCue          = useStore(s => s.goPrevCue)
+  const metronomeDeviceId  = useStore(s => s.metronomeDeviceId)
 
   const effectEngineRef   = useRef(null)
   const bpmEngineRef      = useRef(null)
@@ -54,6 +53,9 @@ export default function App() {
 
     const metro = new MetronomeEngine()
     metronomeRef.current = metro
+    // Apply persisted audio device (stored before AudioContext exists — used on first start)
+    const savedDeviceId = useStore.getState().metronomeDeviceId
+    if (savedDeviceId) metro.setDevice(savedDeviceId)
 
     const bpmEng = new BpmEngine({
       onRecallScene: (sceneId, fadeMs) => recallScene(sceneId, fadeMs),
@@ -113,23 +115,31 @@ export default function App() {
     }
   }, [])
 
-  // Global keyboard shortcuts — capture phase, stopPropagation prevents double-fire
-  // when a BUTTON/BlackoutButton has focus (Space would both toggle blackout AND click the button)
+  // Global keyboard shortcuts
   useEffect(() => {
     const handler = (e) => {
       if (e.repeat) return
       const tag = e.target.tagName
       const isText = tag === 'INPUT' || tag === 'TEXTAREA'
-      if (e.code === 'Space' && !isText) {
-        e.preventDefault()
-        e.stopPropagation()           // stops event reaching focused button → no double-toggle
-        e.stopImmediatePropagation()  // stops other window-level capture listeners
-        useStore.getState().toggleBlackout()
+      if (isText || tag === 'SELECT' || tag === 'BUTTON') return
+      const screen = useStore.getState().activeScreen
+
+      // Show runner navigation
+      if (screen === 'show') {
+        const { status } = useStore.getState().runnerState
+        const bpmEng     = bpmEngineRef.current
+        if (e.code === 'Enter' || e.code === 'ArrowRight') {
+          e.preventDefault()
+          if (status === 'breakpoint') bpmEng?.resume()
+          else if (status === 'running') bpmEng?.skipForward()
+        } else if (e.code === 'Backspace' || e.code === 'ArrowLeft') {
+          e.preventDefault()
+          if (status === 'running') bpmEng?.skipBack()
+        }
         return
       }
-      if (isText || tag === 'SELECT' || tag === 'BUTTON') return
-      // Cue navigation only fires on screens where it makes sense
-      const screen = useStore.getState().activeScreen
+
+      // Cue navigation only fires on live/cues screens
       if (screen !== 'live' && screen !== 'cues') return
       if (e.code === 'Enter')     { e.preventDefault(); goNextCue() }
       if (e.code === 'Backspace') { e.preventDefault(); goPrevCue() }
@@ -137,6 +147,11 @@ export default function App() {
     window.addEventListener('keydown', handler, true)
     return () => window.removeEventListener('keydown', handler, true)
   }, [goNextCue, goPrevCue])
+
+  // Sync audio output device to MetronomeEngine whenever it changes
+  useEffect(() => {
+    metronomeRef.current?.setDevice(metronomeDeviceId)
+  }, [metronomeDeviceId])
 
   const screens = {
     live:     <LiveScreen effectEngine={effectEngineRef} />,
@@ -161,7 +176,6 @@ export default function App() {
               <StageVisualizer compact />
             </div>
           )}
-          <BlackoutButton />
         </div>
       </div>
       <Toast />

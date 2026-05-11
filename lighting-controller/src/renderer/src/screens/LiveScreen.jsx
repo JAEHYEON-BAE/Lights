@@ -30,7 +30,8 @@ export default function LiveScreen({ effectEngine }) {
     const entry = fixtureEffects[id]
     if (entry) {
       setEffectKey(entry.effectKey)
-      setParams({ ...entry.params })
+      // Merge with defaultParams so newly added params (e.g. maxBrightness) always appear
+      setParams({ ...EFFECTS[entry.effectKey]?.defaultParams, ...entry.params })
     } else {
       setEffectKey('color')
       const c = fixtureState[id] || { d: 254, r: 0, g: 0, b: 0 }
@@ -237,14 +238,26 @@ export default function LiveScreen({ effectEngine }) {
           )}
 
           {/* Min Brightness */}
-          {'minBrightness' in params && (
+          {'minBrightness' in (EFFECTS[effectKey]?.defaultParams ?? {}) && (
             <div>
               <label className="text-xs text-gray-500 block mb-1">
                 Min Brightness: {Math.round(params.minBrightness * 100)}%
               </label>
               <input type="range" min="0" max="1" step="0.01"
                 value={params.minBrightness}
-                onChange={e => setParam('minBrightness', +e.target.value)}
+                onChange={e => setParam('minBrightness', Math.min(+e.target.value, params.maxBrightness ?? 1))}
+                className="w-full" />
+            </div>
+          )}
+
+          {'maxBrightness' in (EFFECTS[effectKey]?.defaultParams ?? {}) && (
+            <div>
+              <label className="text-xs text-gray-500 block mb-1">
+                Max Brightness: {Math.round((params.maxBrightness ?? 1) * 100)}%
+              </label>
+              <input type="range" min="0" max="1" step="0.01"
+                value={params.maxBrightness ?? 1}
+                onChange={e => setParam('maxBrightness', Math.max(+e.target.value, params.minBrightness ?? 0))}
                 className="w-full" />
             </div>
           )}

@@ -46,6 +46,28 @@ export default function ShowScreen({ bpmEngine }) {
   const [setlistDrag,    setSetlistDrag]    = useState({ src: null, over: null, pos: null })
   const [segDrag,        setSegDrag]        = useState({ src: null, over: null, pos: null })
 
+  // Cmd+S / Ctrl+S to save
+  useEffect(() => {
+    const onKeyDown = (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.code === 'KeyS' && !e.shiftKey) {
+        e.preventDefault()
+        if (show) handleSave()
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [show, isDirty])
+
+  // Auto-select the last used show when shows finish loading
+  useEffect(() => {
+    if (show || shows.length === 0) return
+    const lastId = localStorage.getItem('lastShowId')
+    if (lastId) {
+      const found = shows.find(s => s.show_id === lastId)
+      if (found) handleSelectShow(found.show_id)
+    }
+  }, [shows])
+
   // When a show is selected from dropdown or saved externally, sync local copy (only when idle)
   useEffect(() => {
     if (!isIdle || !show || !activeShow) return
@@ -70,6 +92,7 @@ export default function ShowScreen({ bpmEngine }) {
   function handleSelectShow(showId) {
     const found = shows.find(s => s.show_id === showId)
     if (!found) return
+    localStorage.setItem('lastShowId', showId)
     const clone = structuredClone(found)
     setShow(clone)
     setSelectedSongId(null)
@@ -91,6 +114,7 @@ export default function ShowScreen({ bpmEngine }) {
   async function handleSave() {
     if (!show) return
     await saveShow(show)
+    localStorage.setItem('lastShowId', show.show_id)
     setIsDirty(false)
     clearDirtyScreen()
     showToast('Saved')

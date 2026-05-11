@@ -106,24 +106,6 @@ const useStore = create((set, get) => ({
   // ── Groups ─────────────────────────────────────────────────────────────────
   groups: [],
 
-  // ── Blackout ───────────────────────────────────────────────────────────────
-  blackoutActive: false,
-
-  toggleBlackout: () => {
-    const next = !get().blackoutActive
-    set({ blackoutActive: next })
-    window.api.setBlackout(next)
-    if (!next) {
-      // Restore: re-broadcast fixtureState with masterDimmer applied
-      const { fixtures, fixtureState, fixtureEnabled } = get()
-      fixtures.forEach(f => {
-        if (!(fixtureEnabled[f.id] ?? true)) return
-        const c = fixtureState[f.id] || { d: 254, r: 0, g: 0, b: 0 }
-        get().setFixture(f.id, c.d, c.r, c.g, c.b)
-      })
-    }
-  },
-
   // ── Master Dimmer ──────────────────────────────────────────────────────────
   masterDimmer: 1.0,
 
@@ -344,12 +326,12 @@ const useStore = create((set, get) => ({
   setBpmEngine: (engine) => set({ bpmEngine: engine }),
 
   // ── Metronome settings ─────────────────────────────────────────────────────
-  metronomeEnabled:  false,
-  metronomeVolume:   0.7,
-  metronomeDeviceId: '',
-  setMetronomeEnabled:  (v) => set({ metronomeEnabled: v }),
-  setMetronomeVolume:   (v) => set({ metronomeVolume: v }),
-  setMetronomeDeviceId: (v) => set({ metronomeDeviceId: v }),
+  metronomeEnabled:  localStorage.getItem('metronomeEnabled') === 'true',
+  metronomeVolume:   parseFloat(localStorage.getItem('metronomeVolume') ?? '0.7'),
+  metronomeDeviceId: localStorage.getItem('metronomeDeviceId') ?? '',
+  setMetronomeEnabled:  (v) => { localStorage.setItem('metronomeEnabled', v); set({ metronomeEnabled: v }) },
+  setMetronomeVolume:   (v) => { localStorage.setItem('metronomeVolume', v); set({ metronomeVolume: v }) },
+  setMetronomeDeviceId: (v) => { localStorage.setItem('metronomeDeviceId', v); set({ metronomeDeviceId: v }) },
 
   // ── Toast ──────────────────────────────────────────────────────────────────
   toast: null, // { message, id }

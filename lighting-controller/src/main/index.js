@@ -54,7 +54,6 @@ function createWindow() {
   bridge.on('error',             (msg)    => send('serial:error', msg))
   bridge.on('heartbeat',         (data)   => send('serial:heartbeat', data))
   bridge.on('heartbeat-timeout', ()       => send('serial:heartbeat-timeout'))
-  bridge.on('blackout',          (active) => send('serial:blackout', active))
 }
 
 app.whenReady().then(createWindow)
@@ -69,7 +68,6 @@ ipcMain.handle('serial:stop-simulate',  ()                => bridge.stopSimulate
 ipcMain.handle('serial:connect',      (_, port)         => bridge.connect(port))
 ipcMain.handle('serial:disconnect',   ()                => bridge.disconnect())
 ipcMain.handle('serial:set-fixture',  (_, id, d, r, g, b)  => bridge.setFixture(id, d, r, g, b))
-ipcMain.handle('serial:set-blackout', (_, active)       => bridge.setBlackout(active))
 ipcMain.handle('serial:reset',        ()                => bridge.sendReset())
 ipcMain.handle('serial:is-connected', ()                => bridge.connected)
 

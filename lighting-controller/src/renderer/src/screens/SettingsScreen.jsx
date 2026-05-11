@@ -17,7 +17,7 @@ export default function SettingsScreen() {
   const setMetronomeDeviceId = useStore(s => s.setMetronomeDeviceId)
 
   const [ports, setPorts]           = useState([])
-  const [selectedPort, setSelectedPort] = useState('')
+  const [selectedPort, setSelectedPort] = useState(() => localStorage.getItem('lastSerialPort') ?? '')
   const [connecting, setConnecting] = useState(false)
   const [error, setError]           = useState('')
   const [fixturePath, setFixturePath] = useState('')
@@ -27,7 +27,9 @@ export default function SettingsScreen() {
   const refreshPorts = async () => {
     const list = await window.api.listPorts()
     setPorts(list)
-    if (list.length > 0 && !selectedPort) setSelectedPort(list[0].path)
+    // Use saved port if available, otherwise fall back to first in list
+    const saved = localStorage.getItem('lastSerialPort')
+    if (!selectedPort && !saved && list.length > 0) setSelectedPort(list[0].path)
   }
 
   const refreshAudioOutputs = async () => {
@@ -46,6 +48,7 @@ export default function SettingsScreen() {
     setError('')
     try {
       await window.api.connect(selectedPort)
+      localStorage.setItem('lastSerialPort', selectedPort)
     } catch (e) {
       setError(e.message || String(e))
     } finally {
@@ -192,7 +195,6 @@ export default function SettingsScreen() {
         </h2>
         <div className="grid grid-cols-2 gap-y-2 text-sm">
           {[
-            ['SPACE',     'Toggle Blackout'],
             ['ENTER',     'Go (next cue)'],
             ['BACKSPACE', 'Back (prev cue)'],
           ].map(([key, action]) => (
