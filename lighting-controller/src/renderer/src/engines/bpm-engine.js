@@ -98,8 +98,8 @@ export class BpmEngine {
       this._pushState({ elapsedBarsInSegment: elapsedBars })
     }
 
-    // Compare via multiplication to avoid float division precision issues
-    if (elapsedMs >= segment.bars * barDurationMs) {
+    // Infinite segments hold until manually skipped — never auto-advance
+    if (!segment.infinite && elapsedMs >= segment.bars * barDurationMs) {
       this._advanceSegment()
     }
   }
@@ -204,7 +204,9 @@ export class BpmEngine {
       currentSongId:        song?.song_id ?? null,
       currentSegmentIndex:  this._currentSegmentIndex,
       currentBpm:           song?.bpm ?? 0,
+      beatsPerBar:          song?.beats_per_bar ?? 4,
       totalBarsInSegment:   segment?.bars ?? 0,
+      segmentInfinite:      segment?.infinite ?? false,
       elapsedBarsInSegment: this._lastElapsedBars ?? 0,
       ...extra,
     })

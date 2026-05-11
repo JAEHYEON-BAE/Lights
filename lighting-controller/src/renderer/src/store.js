@@ -313,6 +313,8 @@ const useStore = create((set, get) => ({
     currentBpm: 0,
     elapsedBarsInSegment: 0,
     totalBarsInSegment: 0,
+    segmentInfinite: false,
+    beatsPerBar: 4,
   },
 
   loadShows: (shows) => set({ shows }),
@@ -340,6 +342,14 @@ const useStore = create((set, get) => ({
 
   bpmEngine: null,
   setBpmEngine: (engine) => set({ bpmEngine: engine }),
+
+  // ── Metronome settings ─────────────────────────────────────────────────────
+  metronomeEnabled:  false,
+  metronomeVolume:   0.7,
+  metronomeDeviceId: '',
+  setMetronomeEnabled:  (v) => set({ metronomeEnabled: v }),
+  setMetronomeVolume:   (v) => set({ metronomeVolume: v }),
+  setMetronomeDeviceId: (v) => set({ metronomeDeviceId: v }),
 
   // ── Toast ──────────────────────────────────────────────────────────────────
   toast: null, // { message, id }

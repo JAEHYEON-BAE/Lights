@@ -20,7 +20,7 @@ export default function Sidebar() {
   function handleNav(id) {
     if (id === active) return
     if (dirtyScreen) {
-      const ok = window.confirm('저장되지 않은 변경사항이 있습니다.\n이 페이지를 떠나시겠습니까?')
+      const ok = window.confirm('You have unsaved changes.\nLeave this page?')
       if (!ok) return
       clearDirtyScreen()
     }

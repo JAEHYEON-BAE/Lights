@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import useStore from '../store'
+import { listAudioOutputs } from '../engines/metronome-engine'
 
 export default function SettingsScreen() {
   const connected      = useStore(s => s.connected)
@@ -8,12 +9,20 @@ export default function SettingsScreen() {
   const setDisconnected = useStore(s => s.setDisconnected)
   const loadFixtures   = useStore(s => s.loadFixtures)
 
+  const metronomeEnabled   = useStore(s => s.metronomeEnabled)
+  const metronomeVolume    = useStore(s => s.metronomeVolume)
+  const metronomeDeviceId  = useStore(s => s.metronomeDeviceId)
+  const setMetronomeEnabled  = useStore(s => s.setMetronomeEnabled)
+  const setMetronomeVolume   = useStore(s => s.setMetronomeVolume)
+  const setMetronomeDeviceId = useStore(s => s.setMetronomeDeviceId)
+
   const [ports, setPorts]           = useState([])
   const [selectedPort, setSelectedPort] = useState('')
   const [connecting, setConnecting] = useState(false)
   const [error, setError]           = useState('')
   const [fixturePath, setFixturePath] = useState('')
   const [fixtureStatus, setFixtureStatus] = useState('')
+  const [audioOutputs, setAudioOutputs]   = useState([])
 
   const refreshPorts = async () => {
     const list = await window.api.listPorts()
@@ -21,7 +30,15 @@ export default function SettingsScreen() {
     if (list.length > 0 && !selectedPort) setSelectedPort(list[0].path)
   }
 
-  useEffect(() => { refreshPorts() }, [])
+  const refreshAudioOutputs = async () => {
+    const list = await listAudioOutputs()
+    setAudioOutputs(list)
+  }
+
+  useEffect(() => {
+    refreshPorts()
+    refreshAudioOutputs()
+  }, [])
 
   const handleConnect = async () => {
     if (!selectedPort) return
@@ -184,6 +201,60 @@ export default function SettingsScreen() {
               <span className="text-gray-400">{action}</span>
             </React.Fragment>
           ))}
+        </div>
+      </section>
+
+      {/* Metronome */}
+      <section className="bg-surface-800 rounded-2xl p-5 flex flex-col gap-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider">Metronome</h2>
+          <button
+            onClick={() => setMetronomeEnabled(!metronomeEnabled)}
+            className={`px-4 py-1.5 rounded-lg text-sm font-semibold transition-colors ${
+              metronomeEnabled
+                ? 'bg-accent-green text-white hover:bg-green-500'
+                : 'bg-surface-700 text-gray-400 hover:bg-surface-600'
+            }`}
+          >
+            {metronomeEnabled ? '● Enabled' : 'Disabled'}
+          </button>
+        </div>
+        <p className="text-xs text-gray-500 -mt-2">
+          Plays a click sound in sync with the show BPM — downbeat is a higher pitch
+        </p>
+
+        {/* Volume */}
+        <div>
+          <label className="text-xs text-gray-400 block mb-1">
+            Volume: {Math.round(metronomeVolume * 100)}%
+          </label>
+          <input
+            type="range" min="0" max="1" step="0.05"
+            value={metronomeVolume}
+            onChange={e => setMetronomeVolume(Number(e.target.value))}
+            className="w-full"
+          />
+        </div>
+
+        {/* Audio output device */}
+        <div>
+          <div className="flex items-center justify-between mb-1">
+            <label className="text-xs text-gray-400">Audio Output Device</label>
+            <button onClick={refreshAudioOutputs} className="text-xs text-gray-500 hover:text-white">↻ Refresh</button>
+          </div>
+          <select
+            value={metronomeDeviceId}
+            onChange={e => setMetronomeDeviceId(e.target.value)}
+            className="w-full bg-surface-700 rounded-lg px-3 py-2 text-sm outline-none border border-surface-600 focus:border-accent-blue"
+          >
+            <option value="">System default</option>
+            {audioOutputs.map(d => (
+              <option key={d.deviceId} value={d.deviceId}>{d.label}</option>
+            ))}
+          </select>
+          {audioOutputs.length === 0 && (
+            <p className="text-xs text-gray-600 mt-1">No devices found — try refreshing</p>
+          )}
         </div>
       </section>
     </div>

@@ -2,7 +2,8 @@ import React, { useEffect, useRef } from 'react'
 import useStore from './store'
 import { FadeEngine }   from './engines/fade-engine'
 import { EffectEngine } from './engines/effect-engine'
-import { BpmEngine }    from './engines/bpm-engine'
+import { BpmEngine }       from './engines/bpm-engine'
+import { MetronomeEngine } from './engines/metronome-engine'
 import Sidebar          from './components/Sidebar'
 import StatusBar        from './components/StatusBar'
 import BlackoutButton   from './components/BlackoutButton'
@@ -35,8 +36,10 @@ export default function App() {
   const goNextCue          = useStore(s => s.goNextCue)
   const goPrevCue          = useStore(s => s.goPrevCue)
 
-  const effectEngineRef = useRef(null)
-  const bpmEngineRef    = useRef(null)
+  const effectEngineRef   = useRef(null)
+  const bpmEngineRef      = useRef(null)
+  const metronomeRef      = useRef(null)
+  const prevRunnerStatus  = useRef('stopped')
 
   // Bootstrap
   useEffect(() => {
@@ -48,6 +51,9 @@ export default function App() {
     const effectEng = new EffectEngine(setFixture)
     effectEngineRef.current = effectEng
     setEffectEngine(effectEng)
+
+    const metro = new MetronomeEngine()
+    metronomeRef.current = metro
 
     const bpmEng = new BpmEngine({
       onRecallScene: (sceneId, fadeMs) => recallScene(sceneId, fadeMs),
@@ -66,7 +72,23 @@ export default function App() {
         state.clearAllEffects()
         state.fixtures.forEach(f => state.setFixture(f.id, 0, 0, 0, 0))
       },
-      onStateUpdate: (patch) => updateRunnerState(patch),
+      onStateUpdate: (patch) => {
+        updateRunnerState(patch)
+        const { metronomeEnabled, metronomeVolume } = useStore.getState()
+        const status = patch.status ?? 'stopped'
+        const bpm    = patch.currentBpm ?? 0
+        const bpb    = patch.beatsPerBar ?? 4
+        if (metronomeEnabled && status === 'running' && bpm > 0) {
+          if (prevRunnerStatus.current !== 'running') {
+            metro.start(bpm, bpb, metronomeVolume)
+          } else {
+            metro.updateBpm(bpm, bpb)
+          }
+        } else if (prevRunnerStatus.current === 'running' && status !== 'running') {
+          metro.stop()
+        }
+        prevRunnerStatus.current = status
+      },
     })
     bpmEngineRef.current = bpmEng
     setBpmEngine(bpmEng)
@@ -87,6 +109,7 @@ export default function App() {
       fadeEng.destroy()
       effectEng.destroy()
       bpmEng.destroy()
+      metro.destroy()
     }
   }, [])
 

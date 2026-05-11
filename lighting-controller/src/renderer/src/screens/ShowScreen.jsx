@@ -8,10 +8,10 @@ function newSegId()   { return `seg_${Date.now()}_${Math.random().toString(36).s
 function newBpId()    { return `bp_${Date.now()}` }
 
 function emptyShow() {
-  return { version: '1.0', show_id: newShowId(), show_name: '새 공연', songs: {}, setlist: [] }
+  return { version: '1.0', show_id: newShowId(), show_name: 'New Show', songs: {}, setlist: [] }
 }
 function emptySegment() {
-  return { segment_id: newSegId(), name: '', scene_id: null, bars: 8, fade_in_ms: 250 }
+  return { segment_id: newSegId(), name: '', scene_id: null, bars: 8, fade_in_ms: 250, infinite: false }
 }
 
 // Format bar counts: integers as "4", fractions as "4.5" (no trailing zeros)
@@ -93,12 +93,12 @@ export default function ShowScreen({ bpmEngine }) {
     await saveShow(show)
     setIsDirty(false)
     clearDirtyScreen()
-    showToast('저장되었습니다')
+    showToast('Saved')
   }
 
   async function handleDelete() {
     if (!show) return
-    if (!window.confirm(`"${show.show_name}" 을 삭제할까요?`)) return
+    if (!window.confirm(`Delete "${show.show_name}"?`)) return
     await deleteShow(show.show_id)
     setShow(null)
     setSelectedSongId(null)
@@ -110,7 +110,7 @@ export default function ShowScreen({ bpmEngine }) {
   function handleAddSong() {
     const songId = newSongId()
     updateShow(draft => {
-      draft.songs[songId] = { song_id: songId, name: '새 곡', bpm: 120, beats_per_bar: 4, segments: [emptySegment()] }
+      draft.songs[songId] = { song_id: songId, name: 'New Song', bpm: 120, beats_per_bar: 4, segments: [emptySegment()] }
       draft.setlist.push({ type: 'song', song_id: songId })
     })
     setSelectedSongId(songId)
@@ -132,7 +132,7 @@ export default function ShowScreen({ bpmEngine }) {
   function handleAddBreakpoint(afterIndex) {
     updateShow(draft => {
       draft.setlist.splice(afterIndex + 1, 0, {
-        type: 'breakpoint', breakpoint_id: newBpId(), name: '멘트', scene_id: null, fade_in_ms: 0,
+        type: 'breakpoint', breakpoint_id: newBpId(), name: 'Break', scene_id: null, fade_in_ms: 0,
       })
     })
   }
@@ -217,7 +217,7 @@ export default function ShowScreen({ bpmEngine }) {
 
   // ── Runner derived state ──────────────────────────────────────────────────────
   const { currentSetlistIndex, currentSongId, currentSegmentIndex, currentBpm,
-          elapsedBarsInSegment, totalBarsInSegment } = runnerState
+          elapsedBarsInSegment, totalBarsInSegment, segmentInfinite } = runnerState
 
   // Runner uses activeShow (the last saved/loaded version) for display
   const runShow       = activeShow ?? show
@@ -229,7 +229,7 @@ export default function ShowScreen({ bpmEngine }) {
   const barPct        = totalBarsInSegment > 0 ? Math.min(1, elapsedBarsInSegment / totalBarsInSegment) : 0
   const barsLeft      = Math.max(0, totalBarsInSegment - elapsedBarsInSegment)
 
-  const statusLabel = { stopped: '정지', running: '진행 중', breakpoint: '대기 (멘트)', ended: '공연 종료' }[status] ?? status
+  const statusLabel = { stopped: 'Stopped', running: 'Running', breakpoint: 'Break (Waiting)', ended: 'Show Ended' }[status] ?? status
   const statusColor = { stopped: 'text-gray-500', running: 'text-accent-green', breakpoint: 'text-yellow-400', ended: 'text-blue-400' }[status] ?? 'text-gray-400'
 
   const selectedSong = show && selectedSongId ? show.songs[selectedSongId] : null
@@ -249,9 +249,9 @@ export default function ShowScreen({ bpmEngine }) {
           }}
           disabled={!isIdle}
         >
-          <option value="" disabled>— 공연 선택 —</option>
+          <option value="" disabled>— Select Show —</option>
           {shows.map(s => <option key={s.show_id} value={s.show_id}>{s.show_name}</option>)}
-          <option value="__new__">＋ 새 공연 만들기</option>
+          <option value="__new__">＋ New Show</option>
         </select>
 
         {show && isIdle && (
@@ -259,7 +259,7 @@ export default function ShowScreen({ bpmEngine }) {
             className="flex-1 min-w-[140px] bg-surface-700 border border-surface-600 rounded px-2 py-1 text-sm text-white"
             value={show.show_name}
             onChange={e => updateShow(d => { d.show_name = e.target.value })}
-            placeholder="공연명"
+            placeholder="Show name"
           />
         )}
 
@@ -280,16 +280,16 @@ export default function ShowScreen({ bpmEngine }) {
                   : 'bg-surface-600 hover:bg-surface-500'
               }`}
             >
-              {isDirty ? '● 저장' : '저장'}
+              {isDirty ? '● Save' : 'Save'}
             </button>
-            <button onClick={handleDelete} className="px-3 py-1 rounded text-sm bg-red-800 hover:bg-red-700 text-white">삭제</button>
+            <button onClick={handleDelete} className="px-3 py-1 rounded text-sm bg-red-800 hover:bg-red-700 text-white">Delete</button>
           </>
         )}
       </div>
 
       {!show ? (
         <div className="flex-1 flex items-center justify-center text-gray-500 text-sm">
-          공연을 선택하거나 새로 만드세요
+          Select a show or create a new one
         </div>
       ) : (
         <div className="flex flex-1 min-h-0 gap-4">
@@ -300,7 +300,7 @@ export default function ShowScreen({ bpmEngine }) {
               <span className="text-xs text-gray-400 uppercase tracking-widest">Setlist</span>
               {isIdle && (
                 <button onClick={handleAddSong} className="text-xs px-2 py-0.5 rounded bg-surface-700 hover:bg-surface-600 text-gray-300">
-                  + 곡 추가
+                  + Add Song
                 </button>
               )}
             </div>
@@ -308,7 +308,7 @@ export default function ShowScreen({ bpmEngine }) {
             {/* Setlist items */}
             <div className="flex-1 overflow-y-auto flex flex-col gap-1">
               {show.setlist.length === 0 && (
-                <div className="text-gray-500 text-xs text-center py-8">곡을 추가하세요</div>
+                <div className="text-gray-500 text-xs text-center py-8">Add songs to your setlist</div>
               )}
 
               {show.setlist.map((item, idx) => {
@@ -362,7 +362,7 @@ export default function ShowScreen({ bpmEngine }) {
                           </span>
                         )}
                         {isIdle && <span className="text-gray-500 select-none mr-0.5 shrink-0">⠿</span>}
-                        <span className="flex-1 truncate">♩ {song?.name ?? '(삭제된 곡)'}</span>
+                        <span className="flex-1 truncate">♩ {song?.name ?? '(deleted)'}</span>
                         {song && (() => {
                           const mins = song.segments.reduce((s, seg) => s + seg.bars * (60000 / song.bpm) * song.beats_per_bar, 0) / 60000
                           return <span className="text-[10px] text-gray-500 tabular-nums shrink-0">{mins.toFixed(2)} min</span>
@@ -382,8 +382,8 @@ export default function ShowScreen({ bpmEngine }) {
                             onDragOver={e => e.stopPropagation()}
                             onClick={() => handleAddBreakpoint(idx)}
                             className="text-[10px] text-gray-600 hover:text-yellow-400 px-2"
-                            title="멘트 삽입"
-                          >+ 멘트</button>
+                            title="Insert break"
+                          >+ Break</button>
                         </div>
                       )}
                     </div>
@@ -401,7 +401,7 @@ export default function ShowScreen({ bpmEngine }) {
                               className="flex-1 bg-transparent outline-none text-yellow-200 placeholder-yellow-600 font-medium"
                               value={item.name}
                               onChange={e => handleBpField(item.breakpoint_id, 'name', e.target.value)}
-                              placeholder="멘트명"
+                              placeholder="Break name"
                             />
                             <button onClick={() => handleRemoveBreakpoint(item.breakpoint_id)} className="text-yellow-700 hover:text-red-400 ml-1">✕</button>
                           </div>
@@ -411,7 +411,7 @@ export default function ShowScreen({ bpmEngine }) {
                               value={item.scene_id ?? ''}
                               onChange={e => handleBpField(item.breakpoint_id, 'scene_id', e.target.value || null)}
                             >
-                              <option value="">— 조명 없음 —</option>
+                              <option value="">— No lighting —</option>
                               {scenes.map(sc => <option key={sc.scene_id} value={sc.scene_id}>{sc.name}</option>)}
                             </select>
                             <input
@@ -449,8 +449,8 @@ export default function ShowScreen({ bpmEngine }) {
                             onDragOver={e => e.stopPropagation()}
                             onClick={() => handleAddBreakpoint(idx)}
                             className="text-[10px] text-gray-600 hover:text-yellow-400 px-2"
-                            title="멘트 삽입"
-                          >+ 멘트</button>
+                            title="Insert break"
+                          >+ Break</button>
                         </div>
                       )}
                     </div>
@@ -472,8 +472,15 @@ export default function ShowScreen({ bpmEngine }) {
                   <button onClick={handleStop} className="flex-1 py-2 rounded-lg bg-surface-700 hover:bg-surface-600 text-white text-sm transition-colors">■ STOP</button>
                   {status === 'running' && (
                     <>
-                      <button onClick={handleSkipBack}    className="px-3 py-2 rounded-lg bg-surface-700 hover:bg-surface-600 text-white text-sm transition-colors">◀</button>
-                      <button onClick={handleSkipForward} className="px-3 py-2 rounded-lg bg-surface-700 hover:bg-surface-600 text-white text-sm transition-colors">▶▶</button>
+                      <button onClick={handleSkipBack} className="px-3 py-2 rounded-lg bg-surface-700 hover:bg-surface-600 text-white text-sm transition-colors">◀</button>
+                      <button
+                        onClick={handleSkipForward}
+                        className={`px-3 py-2 rounded-lg text-white text-sm font-bold transition-colors ${
+                          segmentInfinite
+                            ? 'bg-accent-green hover:bg-green-500'
+                            : 'bg-surface-700 hover:bg-surface-600'
+                        }`}
+                      >▶▶</button>
                     </>
                   )}
                   {status === 'breakpoint' && (
@@ -491,33 +498,41 @@ export default function ShowScreen({ bpmEngine }) {
             {status === 'running' && currentSong && (
               <div className="bg-surface-800 rounded-xl p-4 flex flex-col gap-3">
                 <div className="flex items-center justify-between text-sm">
-                  <span className="text-gray-400">현재 곡</span>
+                  <span className="text-gray-400">Current Song</span>
                   <span className="text-white font-medium">{currentSong.name}</span>
                 </div>
                 <div className="flex items-center justify-between text-sm">
-                  <span className="text-gray-400">현재 Segment</span>
+                  <span className="text-gray-400">Current Segment</span>
                   <span className="text-white">
                     {currentSeg?.name
-                      ? <>{currentSeg.name} <span className="text-gray-400">— {currentScene?.name ?? '(Scene 없음)'}</span></>
-                      : currentScene?.name ?? '(Scene 없음)'}
+                      ? <>{currentSeg.name} <span className="text-gray-400">— {currentScene?.name ?? '(no scene)'}</span></>
+                      : currentScene?.name ?? '(no scene)'}
                   </span>
                 </div>
-                <div>
-                  <div className="flex justify-between text-xs text-gray-400 mb-1">
-                    <span>마디 진행</span>
-                    <span className="tabular-nums">
-                      {Math.floor(elapsedBarsInSegment)} / {fmtBars(totalBarsInSegment)}마디
-                    </span>
+                {segmentInfinite ? (
+                  <div className="flex items-center gap-2 text-xs text-gray-400">
+                    <span className="text-lg text-accent-blue">∞</span>
+                    <span>Holding — press ▶▶ to advance</span>
                   </div>
-                  <div className="h-3 bg-surface-700 rounded-full overflow-hidden">
-                    <div className="h-full bg-accent-blue rounded-full transition-all duration-100" style={{ width: `${barPct * 100}%` }} />
+                ) : (
+                  <div>
+                    <div className="flex justify-between text-xs text-gray-400 mb-1">
+                      <span>Bars</span>
+                      <span className="tabular-nums">
+                        {Math.floor(elapsedBarsInSegment)} / {fmtBars(totalBarsInSegment)}
+                      </span>
+                    </div>
+                    <div className="h-3 bg-surface-700 rounded-full overflow-hidden">
+                      <div className="h-full bg-accent-blue rounded-full transition-all duration-100" style={{ width: `${barPct * 100}%` }} />
+                    </div>
                   </div>
-                </div>
+                )}
                 {nextSeg && (
                   <div className="flex items-center justify-between text-xs text-gray-500">
-                    <span>다음</span>
+                    <span>Next</span>
                     <span>
-                      {nextSeg.name ? `${nextSeg.name} — ` : ''}{nextScene?.name ?? '(Scene 없음)'} ({fmtBars(barsLeft)}마디 후)
+                      {nextSeg.name ? `${nextSeg.name} — ` : ''}{nextScene?.name ?? '(no scene)'}
+                      {!segmentInfinite && ` (in ${fmtBars(barsLeft)} bars)`}
                     </span>
                   </div>
                 )}
@@ -530,11 +545,11 @@ export default function ShowScreen({ bpmEngine }) {
               const bpScene = bp?.scene_id ? scenes.find(s => s.scene_id === bp.scene_id) : null
               return (
                 <div className="bg-yellow-900/30 border border-yellow-600/50 rounded-xl p-6 flex flex-col items-center gap-3">
-                  <div className="text-yellow-300 text-lg font-medium">⏸ {bp?.name ?? '멘트'}</div>
+                  <div className="text-yellow-300 text-lg font-medium">⏸ {bp?.name ?? 'Break'}</div>
                   {bpScene
-                    ? <div className="text-yellow-400 text-sm">조명: {bpScene.name}</div>
-                    : <div className="text-yellow-600 text-sm">조명 설정 없음</div>}
-                  <div className="text-yellow-500 text-sm">멘트/휴식 구간 — 준비되면 GO를 누르세요</div>
+                    ? <div className="text-yellow-400 text-sm">Scene: {bpScene.name}</div>
+                    : <div className="text-yellow-600 text-sm">No scene set</div>}
+                  <div className="text-yellow-500 text-sm">Break / intermission — press GO when ready</div>
                   <button onClick={handleGo} className="px-8 py-3 rounded-xl bg-accent-green hover:bg-green-500 text-white text-lg font-bold transition-colors">▶ GO</button>
                 </div>
               )
@@ -543,8 +558,8 @@ export default function ShowScreen({ bpmEngine }) {
             {/* ENDED banner */}
             {status === 'ended' && (
               <div className="bg-surface-800 rounded-xl p-6 flex flex-col items-center gap-2">
-                <div className="text-blue-400 text-lg">공연이 종료되었습니다</div>
-                <div className="text-gray-500 text-sm">처음부터 다시 시작하려면 START를 누르세요</div>
+                <div className="text-blue-400 text-lg">Show finished</div>
+                <div className="text-gray-500 text-sm">Press START to run from the beginning</div>
               </div>
             )}
 
@@ -558,7 +573,7 @@ export default function ShowScreen({ bpmEngine }) {
                       className="flex-1 min-w-[140px] bg-surface-700 border border-surface-600 rounded px-2 py-1 text-sm text-white"
                       value={selectedSong.name}
                       onChange={e => handleSongField(selectedSongId, 'name', e.target.value)}
-                      placeholder="곡명"
+                      placeholder="Song name"
                     />
                     <label className="flex items-center gap-1 text-sm text-gray-300">
                       BPM
@@ -572,7 +587,7 @@ export default function ShowScreen({ bpmEngine }) {
                       />
                     </label>
                     <label className="flex items-center gap-1 text-sm text-gray-300">
-                      박자
+                      Time sig.
                       <select
                         className="bg-surface-700 border border-surface-600 rounded px-2 py-1 text-sm text-white"
                         value={selectedSong.beats_per_bar}
@@ -582,7 +597,7 @@ export default function ShowScreen({ bpmEngine }) {
                       </select>
                     </label>
                     <span className="text-xs text-gray-500">
-                      1마디 = {((60000 / selectedSong.bpm) * selectedSong.beats_per_bar / 1000).toFixed(2)}s
+                      1 bar = {((60000 / selectedSong.bpm) * selectedSong.beats_per_bar / 1000).toFixed(2)}s
                     </span>
                   </div>
 
@@ -628,15 +643,29 @@ export default function ShowScreen({ bpmEngine }) {
                           value={seg.scene_id ?? ''}
                           onChange={e => handleSegmentField(selectedSongId, seg.segment_id, 'scene_id', e.target.value || null)}
                         >
-                          <option value="">— Scene 선택 —</option>
+                          <option value="">— Select Scene —</option>
                           {scenes.map(sc => <option key={sc.scene_id} value={sc.scene_id}>{sc.name}</option>)}
                         </select>
-                        <label className="flex items-center gap-1 text-gray-400 text-xs whitespace-nowrap">
-                          마디
+                        <button
+                          title="Hold indefinitely (manual advance)"
+                          onClick={() => handleSegmentField(selectedSongId, seg.segment_id, 'infinite', !seg.infinite)}
+                          className={`text-sm px-1.5 py-0.5 rounded transition-colors shrink-0 ${
+                            seg.infinite
+                              ? 'bg-accent-blue text-white'
+                              : 'bg-surface-800 text-gray-500 hover:text-white border border-surface-600'
+                          }`}
+                        >∞</button>
+                        <label className={`flex items-center gap-1 text-xs whitespace-nowrap ${seg.infinite ? 'text-gray-600' : 'text-gray-400'}`}>
+                          Bars
                           <input
                             key={seg.segment_id + '-bars'}
                             type="number" min="0.25" max="999" step="0.25"
-                            className="w-16 bg-surface-800 border border-surface-600 rounded px-2 py-1 text-sm text-white text-right"
+                            disabled={seg.infinite}
+                            className={`w-16 rounded px-2 py-1 text-sm text-right border ${
+                              seg.infinite
+                                ? 'bg-surface-800/40 border-surface-700 text-gray-600 cursor-not-allowed'
+                                : 'bg-surface-800 border-surface-600 text-white'
+                            }`}
                             defaultValue={seg.bars}
                             onBlur={e => handleSegmentField(selectedSongId, seg.segment_id, 'bars', Math.max(0.25, parseFloat(e.target.value) || 0.25))}
                             onKeyDown={e => e.key === 'Enter' && e.target.blur()}
@@ -662,25 +691,25 @@ export default function ShowScreen({ bpmEngine }) {
                     <button
                       onClick={() => handleAddSegment(selectedSongId)}
                       className="text-sm text-gray-400 hover:text-white border border-dashed border-surface-600 hover:border-surface-400 rounded px-3 py-2 transition-colors"
-                    >+ Segment 추가</button>
+                    >+ Add Segment</button>
                   </div>
 
                   {selectedSong.segments.length > 0 && (
                     <div className="text-xs text-gray-500 mt-1">
-                      총 길이:{' '}
+                      Total:{' '}
                       {(selectedSong.segments.reduce((s, seg) => s + seg.bars, 0) * (60000 / selectedSong.bpm) * selectedSong.beats_per_bar / 1000).toFixed(1)}s
-                      ({fmtBars(selectedSong.segments.reduce((s, seg) => s + seg.bars, 0))}마디)
+                      ({fmtBars(selectedSong.segments.reduce((s, seg) => s + seg.bars, 0))} bars)
                     </div>
                   )}
                 </>
               ) : (
                 <div className="flex-1 flex flex-col items-center justify-center gap-3 text-gray-500 text-sm">
-                  <div>Setlist에서 곡을 선택하세요</div>
+                  <div>Select a song from the setlist</div>
                   {show.setlist.length > 0 && (
                     <div className="text-xs flex gap-4 text-gray-600">
-                      <span>곡 {Object.keys(show.songs).length}개</span>
-                      <span>멘트 {show.setlist.filter(i => i.type === 'breakpoint').length}개</span>
-                      <span>총 {Object.values(show.songs).reduce((s, song) => s + song.segments.reduce((a, seg) => a + seg.bars, 0), 0)}마디</span>
+                      <span>{Object.keys(show.songs).length} song(s)</span>
+                      <span>{show.setlist.filter(i => i.type === 'breakpoint').length} break(s)</span>
+                      <span>{Object.values(show.songs).reduce((s, song) => s + song.segments.reduce((a, seg) => a + seg.bars, 0), 0)} bars total</span>
                     </div>
                   )}
                 </div>
