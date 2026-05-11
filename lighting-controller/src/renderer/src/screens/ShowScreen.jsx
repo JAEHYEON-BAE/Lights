@@ -11,7 +11,7 @@ function emptyShow() {
   return { version: '1.0', show_id: newShowId(), show_name: '새 공연', songs: {}, setlist: [] }
 }
 function emptySegment() {
-  return { segment_id: newSegId(), scene_id: null, bars: 8, fade_in_ms: 250 }
+  return { segment_id: newSegId(), name: '', scene_id: null, bars: 8, fade_in_ms: 250 }
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
@@ -25,14 +25,18 @@ export default function ShowScreen({ bpmEngine }) {
   const runnerState       = useStore(s => s.runnerState)
   const updateRunnerState = useStore(s => s.updateRunnerState)
   const bpmEngineStore    = useStore(s => s.bpmEngine)
+  const showToast         = useStore(s => s.showToast)
+  const setDirtyScreen    = useStore(s => s.setDirtyScreen)
+  const clearDirtyScreen  = useStore(s => s.clearDirtyScreen)
 
   const engine  = bpmEngine?.current ?? bpmEngineStore
-  const status  = runnerState.status  // 'stopped' | 'running' | 'breakpoint' | 'ended'
+  const status  = runnerState.status
   const isIdle  = status === 'stopped' || status === 'ended'
 
   // Local working copy for editing (separate from store so unsaved edits don't affect runner)
   const [show,           setShow]           = useState(() => activeShow ? structuredClone(activeShow) : null)
   const [selectedSongId, setSelectedSongId] = useState(null)
+  const [isDirty,        setIsDirty]        = useState(false)
 
   // When a show is selected from dropdown or saved externally, sync local copy (only when idle)
   useEffect(() => {
@@ -40,12 +44,18 @@ export default function ShowScreen({ bpmEngine }) {
     if (show.show_id !== activeShow.show_id) {
       setShow(structuredClone(activeShow))
       setSelectedSongId(null)
+      setIsDirty(false)
+      clearDirtyScreen()
     }
   }, [activeShow])
 
   // ── Edit helpers ──────────────────────────────────────────────────────────────
   function updateShow(fn) {
     setShow(prev => { const next = structuredClone(prev); fn(next); return next })
+    if (!isDirty) {
+      setIsDirty(true)
+      setDirtyScreen('show')
+    }
   }
 
   // ── Show-level ────────────────────────────────────────────────────────────────
@@ -55,6 +65,8 @@ export default function ShowScreen({ bpmEngine }) {
     const clone = structuredClone(found)
     setShow(clone)
     setSelectedSongId(null)
+    setIsDirty(false)
+    clearDirtyScreen()
     setActiveShow(found)
     engine?.load(found)
     updateRunnerState({ status: 'stopped', currentSetlistIndex: -1, currentSongId: null, currentSegmentIndex: -1, elapsedBarsInSegment: 0 })
@@ -64,12 +76,16 @@ export default function ShowScreen({ bpmEngine }) {
     const s = emptyShow()
     setShow(s)
     setSelectedSongId(null)
-    // Don't set as activeShow until saved
+    setIsDirty(true)
+    setDirtyScreen('show')
   }
 
   async function handleSave() {
     if (!show) return
-    await saveShow(show)  // updates store activeShow
+    await saveShow(show)
+    setIsDirty(false)
+    clearDirtyScreen()
+    showToast('저장되었습니다')
   }
 
   async function handleDelete() {
@@ -78,6 +94,8 @@ export default function ShowScreen({ bpmEngine }) {
     await deleteShow(show.show_id)
     setShow(null)
     setSelectedSongId(null)
+    setIsDirty(false)
+    clearDirtyScreen()
   }
 
   // ── Song ──────────────────────────────────────────────────────────────────────
@@ -167,7 +185,16 @@ export default function ShowScreen({ bpmEngine }) {
     engine.start()
   }
 
-  function handleStop()        { engine?.stop() }
+  function handleStop() {
+    engine?.stop()
+    const state = useStore.getState()
+    state.effectEngine?.clearAll()
+    state.clearAllEffects()
+    state.fixtures.forEach(f => {
+      state.setFixtureColor(f.id, 0, 0, 0)
+      state.setFixtureDimmer(f.id, 0)
+    })
+  }
   function handleGo()          { engine?.resume() }
   function handleSkipForward() { engine?.skipForward() }
   function handleSkipBack()    { engine?.skipBack() }
@@ -240,7 +267,16 @@ export default function ShowScreen({ bpmEngine }) {
 
         {show && isIdle && (
           <>
-            <button onClick={handleSave}   className="px-3 py-1 rounded text-sm bg-accent-blue hover:bg-blue-600 text-white">저장</button>
+            <button
+              onClick={handleSave}
+              className={`px-3 py-1 rounded text-sm text-white transition-colors ${
+                isDirty
+                  ? 'bg-accent-blue hover:bg-blue-600 ring-2 ring-accent-blue/50'
+                  : 'bg-surface-600 hover:bg-surface-500'
+              }`}
+            >
+              {isDirty ? '● 저장' : '저장'}
+            </button>
             <button onClick={handleDelete} className="px-3 py-1 rounded text-sm bg-red-800 hover:bg-red-700 text-white">삭제</button>
           </>
         )}
@@ -421,8 +457,12 @@ export default function ShowScreen({ bpmEngine }) {
                   <span className="text-white font-medium">{currentSong.name}</span>
                 </div>
                 <div className="flex items-center justify-between text-sm">
-                  <span className="text-gray-400">현재 Scene</span>
-                  <span className="text-white">{currentScene?.name ?? '(Scene 없음)'}</span>
+                  <span className="text-gray-400">현재 Segment</span>
+                  <span className="text-white">
+                    {currentSeg?.name
+                      ? <>{currentSeg.name} <span className="text-gray-400">— {currentScene?.name ?? '(Scene 없음)'}</span></>
+                      : currentScene?.name ?? '(Scene 없음)'}
+                  </span>
                 </div>
                 <div>
                   <div className="flex justify-between text-xs text-gray-400 mb-1">
@@ -435,8 +475,10 @@ export default function ShowScreen({ bpmEngine }) {
                 </div>
                 {nextSeg && (
                   <div className="flex items-center justify-between text-xs text-gray-500">
-                    <span>다음 Segment</span>
-                    <span>{nextScene?.name ?? '(Scene 없음)'} ({barsLeft}마디 후)</span>
+                    <span>다음</span>
+                    <span>
+                      {nextSeg.name ? `${nextSeg.name} — ` : ''}{nextScene?.name ?? '(Scene 없음)'} ({barsLeft}마디 후)
+                    </span>
                   </div>
                 )}
               </div>
@@ -507,7 +549,13 @@ export default function ShowScreen({ bpmEngine }) {
                   <div className="flex flex-col gap-1">
                     {selectedSong.segments.map((seg, segIdx) => (
                       <div key={seg.segment_id} className="flex items-center gap-2 bg-surface-700 rounded px-3 py-2 text-sm">
-                        <span className="text-gray-500 w-5 text-right text-xs">{segIdx + 1}</span>
+                        <span className="text-gray-500 w-5 text-right text-xs shrink-0">{segIdx + 1}</span>
+                        <input
+                          className="w-24 bg-surface-800 border border-surface-600 rounded px-2 py-1 text-xs text-gray-200 placeholder-gray-600"
+                          value={seg.name ?? ''}
+                          onChange={e => handleSegmentField(selectedSongId, seg.segment_id, 'name', e.target.value)}
+                          placeholder="Verse…"
+                        />
                         <select
                           className="flex-1 bg-surface-800 border border-surface-600 rounded px-2 py-1 text-sm text-white"
                           value={seg.scene_id ?? ''}

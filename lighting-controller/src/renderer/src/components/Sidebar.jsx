@@ -11,9 +11,21 @@ const NAV = [
 ]
 
 export default function Sidebar() {
-  const active        = useStore(s => s.activeScreen)
-  const setActive     = useStore(s => s.setActiveScreen)
-  const connected     = useStore(s => s.connected)
+  const active           = useStore(s => s.activeScreen)
+  const setActive        = useStore(s => s.setActiveScreen)
+  const connected        = useStore(s => s.connected)
+  const dirtyScreen      = useStore(s => s.dirtyScreen)
+  const clearDirtyScreen = useStore(s => s.clearDirtyScreen)
+
+  function handleNav(id) {
+    if (id === active) return
+    if (dirtyScreen) {
+      const ok = window.confirm('저장되지 않은 변경사항이 있습니다.\n이 페이지를 떠나시겠습니까?')
+      if (!ok) return
+      clearDirtyScreen()
+    }
+    setActive(id)
+  }
 
   return (
     <div className="w-16 flex flex-col items-center py-4 gap-1 bg-surface-800 border-r border-surface-700 flex-shrink-0">
@@ -23,7 +35,7 @@ export default function Sidebar() {
       {NAV.map(n => (
         <button
           key={n.id}
-          onClick={() => setActive(n.id)}
+          onClick={() => handleNav(n.id)}
           title={n.label}
           className={`
             w-12 h-12 rounded-lg flex flex-col items-center justify-center gap-0.5

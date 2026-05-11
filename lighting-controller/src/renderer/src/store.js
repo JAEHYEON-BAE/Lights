@@ -184,19 +184,14 @@ const useStore = create((set, get) => ({
 
     const duration = fadeMs ?? scene.fade_in_ms ?? 0
 
-    if (duration > 0) {
-      get().fadeEngine?.fadeScene(scene, get().masterDimmer, duration)
-    } else {
-      scene.fixtures.forEach(({ id, dim, r, g, b }) => {
-        get().setFixtureColor(id, r, g, b)
-        get().setFixtureDimmer(id, dim ?? 254)
-      })
-    }
+    // Split fixtures: those with effects vs static
+    const effectFixtures = scene.fixtures.filter(f => f.effect)
+    const staticFixtures = scene.fixtures.filter(f => !f.effect)
 
-    const startEffects = () => {
+    // Start effects for a given fixture list (groups by identical effect+params)
+    const applyEffects = (fixtures) => {
       const groups = new Map()
-      scene.fixtures.forEach(({ id, effect, effectParams }) => {
-        if (!effect) return
+      fixtures.forEach(({ id, effect, effectParams }) => {
         const key = effect + '\0' + JSON.stringify(effectParams ?? {})
         if (!groups.has(key)) groups.set(key, { effect, effectParams: effectParams ?? {}, ids: [] })
         groups.get(key).ids.push(id)
@@ -208,9 +203,27 @@ const useStore = create((set, get) => ({
     }
 
     if (duration > 0) {
-      setTimeout(startEffects, duration)
+      const outputState = get().outputState
+      const fromState   = id => outputState[id] ?? { d: 0, r: 0, g: 0, b: 0 }
+
+      // Static fixtures: FadeEngine crossfades d,r,g,b from current output to target
+      staticFixtures.forEach(({ id, dim, r, g, b }) => {
+        const from = fromState(id)
+        get().fadeEngine?.fadeTo(id, from.d, from.r, from.g, from.b, dim ?? 254, r, g, b, duration)
+      })
+
+      // Effect fixtures: EffectEngine crossfades from current output to new effect
+      if (effectFixtures.length > 0) {
+        const fromColors = new Map(effectFixtures.map(({ id }) => [id, fromState(id)]))
+        applyEffects(effectFixtures)
+        get().effectEngine?.startFadeIn(duration, fromColors)
+      }
     } else {
-      startEffects()
+      staticFixtures.forEach(({ id, dim, r, g, b }) => {
+        get().setFixtureColor(id, r, g, b)
+        get().setFixtureDimmer(id, dim ?? 254)
+      })
+      applyEffects(effectFixtures)
     }
 
     set({ activeSceneId: sceneId })
@@ -327,6 +340,21 @@ const useStore = create((set, get) => ({
 
   bpmEngine: null,
   setBpmEngine: (engine) => set({ bpmEngine: engine }),
+
+  // ── Toast ──────────────────────────────────────────────────────────────────
+  toast: null, // { message, id }
+
+  showToast: (message) => {
+    const id = Date.now()
+    set({ toast: { message, id } })
+    setTimeout(() => set(s => s.toast?.id === id ? { toast: null } : {}), 2500)
+  },
+
+  // ── Dirty screen (unsaved changes guard) ───────────────────────────────────
+  dirtyScreen: null, // null | screen id string
+
+  setDirtyScreen:   (screen) => set({ dirtyScreen: screen }),
+  clearDirtyScreen: ()       => set({ dirtyScreen: null }),
 
   // ── UI ─────────────────────────────────────────────────────────────────────
   activeScreen: 'live',

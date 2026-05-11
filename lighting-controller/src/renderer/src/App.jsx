@@ -6,6 +6,7 @@ import { BpmEngine }    from './engines/bpm-engine'
 import Sidebar          from './components/Sidebar'
 import StatusBar        from './components/StatusBar'
 import BlackoutButton   from './components/BlackoutButton'
+import Toast           from './components/Toast'
 import StageVisualizer  from './components/StageVisualizer'
 import SceneBrowserScreen  from './screens/SceneBrowserScreen'
 import CueListScreen       from './screens/CueListScreen'
@@ -41,7 +42,7 @@ export default function App() {
 
   // Bootstrap
   useEffect(() => {
-    const fadeEng = new FadeEngine(setFixtureColor)
+    const fadeEng = new FadeEngine(setFixtureColor, setFixtureDimmer)
     setFadeEngine(fadeEng)
 
     const effectEng = new EffectEngine(setFixtureColor, setFixtureDimmer)
@@ -62,7 +63,15 @@ export default function App() {
           })
         }
       },
-      onShowEnd:     () => {},
+      onShowEnd: () => {
+        const state = useStore.getState()
+        state.effectEngine?.clearAll()
+        state.clearAllEffects()
+        state.fixtures.forEach(f => {
+          state.setFixtureColor(f.id, 0, 0, 0)
+          state.setFixtureDimmer(f.id, 0)
+        })
+      },
       onStateUpdate: (patch) => updateRunnerState(patch),
     })
     bpmEngineRef.current = bpmEng
@@ -138,6 +147,7 @@ export default function App() {
           <BlackoutButton />
         </div>
       </div>
+      <Toast />
     </div>
   )
 }
