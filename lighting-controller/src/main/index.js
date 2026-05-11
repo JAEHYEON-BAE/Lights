@@ -54,7 +54,6 @@ function createWindow() {
   bridge.on('error',             (msg)    => send('serial:error', msg))
   bridge.on('heartbeat',         (data)   => send('serial:heartbeat', data))
   bridge.on('heartbeat-timeout', ()       => send('serial:heartbeat-timeout'))
-  bridge.on('blackout',          (active) => send('serial:blackout', active))
 }
 
 app.whenReady().then(createWindow)
@@ -69,7 +68,6 @@ ipcMain.handle('serial:stop-simulate',  ()                => bridge.stopSimulate
 ipcMain.handle('serial:connect',      (_, port)         => bridge.connect(port))
 ipcMain.handle('serial:disconnect',   ()                => bridge.disconnect())
 ipcMain.handle('serial:set-fixture',  (_, id, d, r, g, b)  => bridge.setFixture(id, d, r, g, b))
-ipcMain.handle('serial:set-blackout', (_, active)       => bridge.setBlackout(active))
 ipcMain.handle('serial:reset',        ()                => bridge.sendReset())
 ipcMain.handle('serial:is-connected', ()                => bridge.connected)
 
@@ -144,5 +142,30 @@ ipcMain.handle('file:load-cueList', () => {
 ipcMain.handle('file:save-cueList', (_, cueList) => {
   ensureDir(resourcesDir)
   writeFileSync(join(resourcesDir, 'cue-list.json'), JSON.stringify(cueList, null, 2))
+  return true
+})
+
+ipcMain.handle('file:load-shows', () => {
+  const dir = join(resourcesDir, 'shows')
+  ensureDir(dir)
+  return readdirSync(dir)
+    .filter(f => f.endsWith('.json'))
+    .map(f => {
+      try { return JSON.parse(readFileSync(join(dir, f), 'utf-8')) }
+      catch { return null }
+    })
+    .filter(Boolean)
+})
+
+ipcMain.handle('file:save-show', (_, show) => {
+  const dir = join(resourcesDir, 'shows')
+  ensureDir(dir)
+  writeFileSync(join(dir, `${show.show_id}.json`), JSON.stringify(show, null, 2))
+  return true
+})
+
+ipcMain.handle('file:delete-show', (_, showId) => {
+  const p = join(resourcesDir, 'shows', `${showId}.json`)
+  if (existsSync(p)) unlinkSync(p)
   return true
 })

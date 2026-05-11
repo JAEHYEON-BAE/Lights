@@ -37,13 +37,18 @@ const useStore = create((set, get) => ({
 
   // ── Fixtures ───────────────────────────────────────────────────────────────
   fixtures: [],
-  fixtureState: {},  // { [id]: { d, r, g, b } }  — intended values (editor state)
-  outputState:  {},  // { [id]: { d, r, g, b } }  — what was actually sent to hardware
+  fixtureState: {},  // { [id]: { d, r, g, b } }  — raw intended values (0–254)
+  outputState:  {},  // { [id]: { d, r, g, b } }  — scaled values actually sent to hardware
 
-  // Internal: send to hardware and record in outputState
-  _sendFixture: (id, d, r, g, b) => {
-    window.api.setFixture(id, d, r, g, b)
-    set(s => ({ outputState: { ...s.outputState, [id]: { d, r, g, b } } }))
+  // Set a fixture's d, r, g, b in one call.
+  // d is raw (0–254); masterDimmer is applied internally before sending to hardware.
+  setFixture: (id, d, r, g, b) => {
+    const rawD = Math.max(0, Math.min(254, Math.round(d)))
+    set(s => ({ fixtureState: { ...s.fixtureState, [id]: { d: rawD, r, g, b } } }))
+    if (!(get().fixtureEnabled[id] ?? true)) return
+    const scaledD = Math.round(rawD * get().masterDimmer)
+    window.api.setFixture(id, scaledD, r, g, b)
+    set(s => ({ outputState: { ...s.outputState, [id]: { d: scaledD, r, g, b } } }))
   },
 
   loadFixtures: (data) => {
@@ -74,26 +79,13 @@ const useStore = create((set, get) => ({
     })
   },
 
-  setFixtureColor: (id, r, g, b) => {
-    const d = Math.round(get().masterDimmer * 254)
-    set(s => ({ fixtureState: { ...s.fixtureState, [id]: { d, r, g, b } } }))
-    if (get().fixtureEnabled[id] ?? true) {
-      get()._sendFixture(id, d, r, g, b)
-    }
-  },
-
-  setFixtureDimmer: (id, d) => {
-    const clamped = Math.max(0, Math.min(254, Math.round(d)))
-    set(s => ({ fixtureState: { ...s.fixtureState, [id]: { ...s.fixtureState[id], d: clamped } } }))
-    if (!(get().fixtureEnabled[id] ?? true)) return
-    const c = get().fixtureState[id] || { r: 0, g: 0, b: 0 }
-    get()._sendFixture(id, clamped, c.r, c.g, c.b)
-  },
-
   setGroupColor: (groupId, r, g, b) => {
-    const { fixtures } = get()
+    const { fixtures, fixtureState } = get()
     const targets = groupId === 'all' ? fixtures : fixtures.filter(f => f.group === groupId)
-    targets.forEach(f => get().setFixtureColor(f.id, r, g, b))
+    targets.forEach(f => {
+      const d = fixtureState[f.id]?.d ?? 254
+      get().setFixture(f.id, d, r, g, b)
+    })
   },
 
   // ── Fixture enabled state ──────────────────────────────────────────────────
@@ -103,55 +95,27 @@ const useStore = create((set, get) => ({
     const next = !(get().fixtureEnabled[id] ?? true)
     set(s => ({ fixtureEnabled: { ...s.fixtureEnabled, [id]: next } }))
     if (!next) {
-      get()._sendFixture(id, 0, 0, 0, 0)
+      window.api.setFixture(id, 0, 0, 0, 0)
+      set(s => ({ outputState: { ...s.outputState, [id]: { d: 0, r: 0, g: 0, b: 0 } } }))
     } else {
-      const { masterDimmer, fixtureState } = get()
-      const d = Math.round(masterDimmer * 254)
-      const c = fixtureState[id] || { r: 0, g: 0, b: 0 }
-      get()._sendFixture(id, d, c.r, c.g, c.b)
+      const c = get().fixtureState[id] || { d: 254, r: 0, g: 0, b: 0 }
+      get().setFixture(id, c.d, c.r, c.g, c.b)
     }
   },
 
   // ── Groups ─────────────────────────────────────────────────────────────────
   groups: [],
 
-  // ── Blackout ───────────────────────────────────────────────────────────────
-  blackoutActive: false,
-
-  toggleBlackout: () => {
-    const next = !get().blackoutActive
-    set({ blackoutActive: next })
-    window.api.setBlackout(next)
-    const { fixtures, fixtureState, fixtureEnabled, masterDimmer } = get()
-    if (next) {
-      // Reflect blackout in outputState
-      set(s => {
-        const output = { ...s.outputState }
-        fixtures.forEach(f => { output[f.id] = { d: 0, r: 0, g: 0, b: 0 } })
-        return { outputState: output }
-      })
-    } else {
-      // Re-broadcast current state so hardware and outputState are in sync
-      const d = Math.round(masterDimmer * 254)
-      fixtures.forEach(f => {
-        if (!(fixtureEnabled[f.id] ?? true)) return
-        const c = fixtureState[f.id] || { r: 0, g: 0, b: 0 }
-        get()._sendFixture(f.id, d, c.r, c.g, c.b)
-      })
-    }
-  },
-
   // ── Master Dimmer ──────────────────────────────────────────────────────────
   masterDimmer: 1.0,
 
   setMasterDimmer: (value) => {
-    const d = Math.round(value * 254)
     set({ masterDimmer: value })
     const { fixtures, fixtureState, fixtureEnabled } = get()
     fixtures.forEach(f => {
       if (!(fixtureEnabled[f.id] ?? true)) return
-      const c = fixtureState[f.id] || { r: 0, g: 0, b: 0 }
-      get()._sendFixture(f.id, d, c.r, c.g, c.b)
+      const c = fixtureState[f.id] || { d: 254, r: 0, g: 0, b: 0 }
+      get().setFixture(f.id, c.d, c.r, c.g, c.b)
     })
   },
 
@@ -179,24 +143,14 @@ const useStore = create((set, get) => ({
     const scene = migrateScene(raw)
     if (!scene) return
 
-    get().effectEngine?.clearAll()
-    set({ fixtureEffects: {} })
-
     const duration = fadeMs ?? scene.fade_in_ms ?? 0
 
-    if (duration > 0) {
-      get().fadeEngine?.fadeScene(scene, get().masterDimmer, duration)
-    } else {
-      scene.fixtures.forEach(({ id, dim, r, g, b }) => {
-        get().setFixtureColor(id, r, g, b)
-        get().setFixtureDimmer(id, dim ?? 254)
-      })
-    }
+    const effectFixtures = scene.fixtures.filter(f => f.effect)
+    const staticFixtures = scene.fixtures.filter(f => !f.effect)
 
-    const startEffects = () => {
+    const applyEffects = (fixtures) => {
       const groups = new Map()
-      scene.fixtures.forEach(({ id, effect, effectParams }) => {
-        if (!effect) return
+      fixtures.forEach(({ id, effect, effectParams }) => {
         const key = effect + '\0' + JSON.stringify(effectParams ?? {})
         if (!groups.has(key)) groups.set(key, { effect, effectParams: effectParams ?? {}, ids: [] })
         groups.get(key).ids.push(id)
@@ -207,10 +161,51 @@ const useStore = create((set, get) => ({
       })
     }
 
+    // Raw d from fixtureState (before masterDimmer scaling)
+    const fromState = id => get().fixtureState[id] ?? { d: 0, r: 0, g: 0, b: 0 }
+
     if (duration > 0) {
-      setTimeout(startEffects, duration)
+      // Snapshot which fixtures currently run effects (before anything is cleared)
+      const prevEffectIds = new Set(Object.keys(get().fixtureEffects).map(Number))
+
+      // fromColors: static→effect fixtures (no old effect, gaining a new one)
+      const fromColors = new Map(
+        effectFixtures
+          .filter(({ id }) => !prevEffectIds.has(id))
+          .map(({ id }) => [id, fromState(id)])
+      )
+
+      // staticTargets: effect→static fixtures (had an effect, becoming static)
+      const staticTargets = new Map(
+        staticFixtures
+          .filter(({ id }) => prevEffectIds.has(id))
+          .map(({ id, dim, r, g, b }) => [id, { d: dim ?? 254, r, g, b }])
+      )
+
+      // Hand old effects to the fading layer; clear fixtureEffects for new ones
+      get().effectEngine?.beginCrossfade(
+        duration,
+        fromColors.size  ? fromColors   : null,
+        staticTargets.size ? staticTargets : null
+      )
+      set({ fixtureEffects: {} })
+
+      // Static→static only: FadeEngine (fixtures with no effect on either side)
+      staticFixtures
+        .filter(({ id }) => !prevEffectIds.has(id))
+        .forEach(({ id, dim, r, g, b }) => {
+          const from = fromState(id)
+          get().fadeEngine?.fadeTo(id, from.d, from.r, from.g, from.b, dim ?? 254, r, g, b, duration)
+        })
+
+      // Activate new effects (beginCrossfade already cleared old fixtureEffects)
+      if (effectFixtures.length > 0) applyEffects(effectFixtures)
+
     } else {
-      startEffects()
+      get().effectEngine?.clearAll()
+      set({ fixtureEffects: {} })
+      staticFixtures.forEach(({ id, dim, r, g, b }) => get().setFixture(id, dim ?? 254, r, g, b))
+      applyEffects(effectFixtures)
     }
 
     set({ activeSceneId: sceneId })
@@ -286,6 +281,72 @@ const useStore = create((set, get) => ({
   },
 
   clearAllEffects: () => set({ fixtureEffects: {} }),
+
+  // ── Shows (BPM Sync) ───────────────────────────────────────────────────────
+  shows: [],
+  activeShowId: null,
+  activeShow: null,
+
+  runnerState: {
+    status: 'stopped',           // 'stopped' | 'running' | 'breakpoint' | 'ended'
+    currentSetlistIndex: -1,
+    currentSongId: null,
+    currentSegmentIndex: -1,
+    currentBpm: 0,
+    elapsedBarsInSegment: 0,
+    totalBarsInSegment: 0,
+    segmentInfinite: false,
+    beatsPerBar: 4,
+  },
+
+  loadShows: (shows) => set({ shows }),
+
+  saveShow: async (show) => {
+    await window.api.saveShow(show)
+    set(s => {
+      const others = s.shows.filter(x => x.show_id !== show.show_id)
+      return { shows: [...others, show], activeShow: show, activeShowId: show.show_id }
+    })
+  },
+
+  deleteShow: async (showId) => {
+    await window.api.deleteShow(showId)
+    set(s => ({
+      shows: s.shows.filter(x => x.show_id !== showId),
+      activeShow: s.activeShowId === showId ? null : s.activeShow,
+      activeShowId: s.activeShowId === showId ? null : s.activeShowId,
+    }))
+  },
+
+  setActiveShow: (show) => set({ activeShow: show, activeShowId: show?.show_id ?? null }),
+
+  updateRunnerState: (patch) => set(s => ({ runnerState: { ...s.runnerState, ...patch } })),
+
+  bpmEngine: null,
+  setBpmEngine: (engine) => set({ bpmEngine: engine }),
+
+  // ── Metronome settings ─────────────────────────────────────────────────────
+  metronomeEnabled:  localStorage.getItem('metronomeEnabled') === 'true',
+  metronomeVolume:   parseFloat(localStorage.getItem('metronomeVolume') ?? '0.7'),
+  metronomeDeviceId: localStorage.getItem('metronomeDeviceId') ?? '',
+  setMetronomeEnabled:  (v) => { localStorage.setItem('metronomeEnabled', v); set({ metronomeEnabled: v }) },
+  setMetronomeVolume:   (v) => { localStorage.setItem('metronomeVolume', v); set({ metronomeVolume: v }) },
+  setMetronomeDeviceId: (v) => { localStorage.setItem('metronomeDeviceId', v); set({ metronomeDeviceId: v }) },
+
+  // ── Toast ──────────────────────────────────────────────────────────────────
+  toast: null, // { message, id }
+
+  showToast: (message) => {
+    const id = Date.now()
+    set({ toast: { message, id } })
+    setTimeout(() => set(s => s.toast?.id === id ? { toast: null } : {}), 2500)
+  },
+
+  // ── Dirty screen (unsaved changes guard) ───────────────────────────────────
+  dirtyScreen: null, // null | screen id string
+
+  setDirtyScreen:   (screen) => set({ dirtyScreen: screen }),
+  clearDirtyScreen: ()       => set({ dirtyScreen: null }),
 
   // ── UI ─────────────────────────────────────────────────────────────────────
   activeScreen: 'live',

@@ -94,3 +94,4 @@ jobs:
             artifacts/macos/*.dmg
             artifacts/windows/**/*Setup*.exe
           generate_release_notes: true
+          prerelease: ${{ contains(github.ref_name, 'beta') || contains(github.ref_name, 'alpha') }}

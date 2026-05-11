@@ -9,8 +9,6 @@ export default function StatusBar() {
   const heartbeatTimeout = useStore(s => s.heartbeatTimeout)
   const masterDimmer     = useStore(s => s.masterDimmer)
   const setMasterDimmer  = useStore(s => s.setMasterDimmer)
-  const blackoutActive   = useStore(s => s.blackoutActive)
-
   const statusColor = !connected
     ? 'bg-gray-600'
     : simulateMode
@@ -44,13 +42,6 @@ export default function StatusBar() {
       )}
 
       <div className="flex-1" />
-
-      {/* Blackout indicator */}
-      {blackoutActive && (
-        <span className="text-accent-red font-bold tracking-widest text-xs animate-pulse">
-          BLACKOUT
-        </span>
-      )}
 
       {/* Master Dimmer */}
       <div className="flex items-center gap-2" style={{ WebkitAppRegion: 'no-drag' }}>

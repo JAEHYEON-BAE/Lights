@@ -11,9 +11,8 @@ export const EFFECTS = {
     name: 'Color',
     static: true,
     defaultParams: { dim: 254, r: 255, g: 255, b: 255 },
-    init(fixtures, params, setFixtureColor, setFixtureDimmer) {
-      fixtures.forEach(id => setFixtureColor(id, params.r, params.g, params.b))
-      fixtures.forEach(id => setFixtureDimmer(id, params.dim))
+    init(fixtures, params, setFixture) {
+      fixtures.forEach(id => setFixture(id, params.dim, params.r, params.g, params.b))
     },
     tick() { return [] }
   },
@@ -32,25 +31,27 @@ export const EFFECTS = {
   },
   sinePulse: {
     name: 'Sine Pulse',
-    defaultParams: { speed: 1, r: 0, g: 100, b: 255, phaseOffset: 0, minBrightness: 0 },
-    init(fixtures, params, setFixtureColor) {
-      fixtures.forEach(id => setFixtureColor(id, params.r, params.g, params.b))
+    defaultParams: { speed: 1, r: 0, g: 100, b: 255, phaseOffset: 0, minBrightness: 0, maxBrightness: 1 },
+    init(fixtures, params, setFixture) {
+      fixtures.forEach(id => setFixture(id, 254, params.r, params.g, params.b))
     },
     tick(fixtures, time, params) {
       const minDim = Math.round(params.minBrightness * 254)
+      const maxDim = Math.round((params.maxBrightness ?? 1) * 254)
       return fixtures.map((id, idx) => {
         const phase = (idx * params.phaseOffset * Math.PI) / 180
         const v = (Math.sin(2 * Math.PI * (params.speed / 1000) * time + phase) + 1) / 2
-        return { id, dimmer: Math.round(minDim + v * (254 - minDim)) }
+        return { id, dimmer: Math.round(minDim + v * (maxDim - minDim)) }
       })
     }
   },
   colorWave: {
     name: 'Color Wave',
-    defaultParams: { speed: 0.5, phaseOffset: 30, hue1: 180, hue2: 270, direction: 'short', pulseAmount: 0, pulseSpeed: 1 },
+    defaultParams: { speed: 0.5, phaseOffset: 30, hue1: 180, hue2: 270, direction: 'short', pulseAmount: 0, pulseSpeed: 1, maxBrightness: 1 },
     tick(fixtures, time, params) {
-      const freq = params.speed / 1000
+      const freq      = params.speed / 1000
       const pulseFreq = params.pulseSpeed / 1000
+      const maxDim    = Math.round((params.maxBrightness ?? 1) * 254)
       const cwDelta = ((params.hue2 - params.hue1) % 360 + 360) % 360
       const delta = params.direction === 'short'
         ? (cwDelta <= 180 ? cwDelta : cwDelta - 360)
@@ -60,7 +61,8 @@ export const EFFECTS = {
         const t = (Math.sin(phase) + 1) / 2
         const hue = ((params.hue1 + delta * t) % 360 + 360) % 360
         const pulsePhase = pulseFreq * time * Math.PI * 2 + idx * (params.phaseOffset * Math.PI / 180)
-        const dimmer = Math.round(((1 - params.pulseAmount) + params.pulseAmount * (Math.sin(pulsePhase) + 1) / 2) * 254)
+        const pulseLevel = (1 - params.pulseAmount) + params.pulseAmount * (Math.sin(pulsePhase) + 1) / 2
+        const dimmer = Math.round(pulseLevel * maxDim)
         return { id, ...hsvToRgb(hue, 1.0, 1.0), dimmer }
       })
     }
@@ -82,8 +84,8 @@ export const EFFECTS = {
   strobe: {
     name: 'Strobe',
     defaultParams: { speed: 8, phaseOffset: 0, r: 255, g: 255, b: 255 },
-    init(fixtures, params, setFixtureColor) {
-      fixtures.forEach(id => setFixtureColor(id, params.r, params.g, params.b))
+    init(fixtures, params, setFixture) {
+      fixtures.forEach(id => setFixture(id, 254, params.r, params.g, params.b))
     },
     tick(fixtures, time, params) {
       return fixtures.map((id, idx) => {
@@ -112,12 +114,41 @@ export const EFFECTS = {
   }
 }
 
+function easeInOut(t) {
+  return t < 0.5 ? 4*t*t*t : 1 - Math.pow(-2*t + 2, 3) / 2
+}
+
 export class EffectEngine {
-  constructor(setFixtureColor, setFixtureDimmer) {
-    this.setFixtureColor  = setFixtureColor
-    this.setFixtureDimmer = setFixtureDimmer
-    this.fixtureEffects   = new Map() // Map<fixtureId, { effectKey, params, startTime }>
-    this.ticker           = null
+  constructor(setFixture) {
+    this.setFixture        = setFixture
+    this.fixtureEffects    = new Map()  // active (new) effects
+    this._fadingEffects    = new Map()  // outgoing (old) effects fading out
+    this._staticTargets    = null       // Map<id,{d,r,g,b}> for effect→static fixtures
+    this.ticker            = null
+    this._envelopeStart    = null
+    this._envelopeDuration = 0
+    this._fromColors       = null       // Map<id,{d,r,g,b}> for static→effect fixtures
+  }
+
+  // Begin a true crossfade: old effects continue running (fade out) while new effects
+  // fade in simultaneously.
+  // fromColors  — snapshot for fixtures gaining an effect from a static state
+  // staticTargets — target colours for fixtures losing their effect (effect→static)
+  beginCrossfade(durationMs, fromColors = null, staticTargets = null) {
+    this._fadingEffects    = new Map(this.fixtureEffects)  // preserve old effects
+    this.fixtureEffects.clear()                             // make room for new effects
+    this._envelopeStart    = performance.now()
+    this._envelopeDuration = durationMs
+    this._fromColors       = fromColors
+    this._staticTargets    = staticTargets
+    this._ensureTicker()
+  }
+
+  _getEnvelope() {
+    if (this._envelopeStart === null) return 1
+    const t = Math.min((performance.now() - this._envelopeStart) / this._envelopeDuration, 1)
+    if (t >= 1) { this._envelopeStart = null; return 1 }
+    return easeInOut(t)
   }
 
   setFixtureEffect(fixtureIds, effectKey, params) {
@@ -126,7 +157,7 @@ export class EffectEngine {
     const startTime = Date.now()
     const groupId   = Symbol()
     fixtureIds.forEach(id => this.fixtureEffects.set(id, { effectKey, params, startTime, groupId }))
-    if (effect.init) effect.init(fixtureIds, params, this.setFixtureColor, this.setFixtureDimmer)
+    if (effect.init) effect.init(fixtureIds, params, this.setFixture)
     this._ensureTicker()
   }
 
@@ -136,30 +167,26 @@ export class EffectEngine {
       if (!entry) return
       entry.params = params
       const effect = EFFECTS[entry.effectKey]
-      if (effect?.static && effect?.init) {
-        effect.init([id], params, this.setFixtureColor, this.setFixtureDimmer)
-      }
+      if (effect?.static && effect?.init) effect.init([id], params, this.setFixture)
     })
   }
 
   clearFixtureEffect(fixtureIds) {
     fixtureIds.forEach(id => this.fixtureEffects.delete(id))
-    if (this.fixtureEffects.size === 0) this._stopTicker()
+    this._stopTickerIfIdle()
   }
 
   clearAll() {
     this.fixtureEffects.clear()
+    this._fadingEffects.clear()
+    this._staticTargets = null
+    this._envelopeStart = null
+    this._fromColors    = null
     this._stopTicker()
   }
 
-  // Backward-compat wrappers
-  start(effectKey, fixtureIds, params) {
-    this.clearAll()
-    this.setFixtureEffect(fixtureIds, effectKey, params)
-  }
-
-  stop() { this.clearAll() }
-
+  start(effectKey, fixtureIds, params) { this.clearAll(); this.setFixtureEffect(fixtureIds, effectKey, params) }
+  stop()    { this.clearAll() }
   destroy() { this.clearAll() }
 
   _ensureTicker() {
@@ -171,30 +198,96 @@ export class EffectEngine {
     if (this.ticker) { clearInterval(this.ticker); this.ticker = null }
   }
 
-  _tick() {
-    if (this.fixtureEffects.size === 0) return
-    const now = Date.now()
+  _stopTickerIfIdle() {
+    if (this.fixtureEffects.size === 0 && this._fadingEffects.size === 0 && !this._staticTargets?.size) {
+      this._stopTicker()
+    }
+  }
 
-    // Group fixtures by groupId so group-aware effects (e.g. chase) receive
-    // the full fixture list in one tick() call instead of one call per fixture.
+  // Group fixtures by groupId so chase/wave effects get the full fixture list per tick call.
+  _buildGroups(effectsMap) {
     const groups = new Map()
-    this.fixtureEffects.forEach((entry, id) => {
+    effectsMap.forEach((entry, id) => {
       if (!groups.has(entry.groupId)) groups.set(entry.groupId, { entry, ids: [] })
       groups.get(entry.groupId).ids.push(id)
     })
+    return groups
+  }
 
-    groups.forEach(({ entry: { effectKey, params, startTime }, ids }) => {
+  // Resolve the (toD, toR, toG, toB) for one tick result, filling missing channels from params.
+  _resolveOutput({ r, g, b, dimmer }, params) {
+    const toR = r      !== undefined ? r      : params.r
+    const toG = r      !== undefined ? g      : params.g
+    const toB = r      !== undefined ? b      : params.b
+    const toD = dimmer !== undefined ? dimmer : 254  // colour-only effects run at full dimmer
+    return { toR, toG, toB, toD }
+  }
+
+  _tick() {
+    const hasNew    = this.fixtureEffects.size > 0
+    const hasFading = this._fadingEffects.size > 0
+    const hasStatic = !!this._staticTargets?.size
+    if (!hasNew && !hasFading && !hasStatic) return
+
+    const now      = Date.now()
+    const envelope = this._getEnvelope()  // 0 → 1
+    const crossing = envelope < 1
+
+    // ── Step 1: compute old-layer outputs (fading effects + fromColors) ──────
+    const oldOutputs = new Map()  // Map<id, {d,r,g,b}>
+    if (crossing) {
+      this._buildGroups(this._fadingEffects).forEach(({ entry: { effectKey, params, startTime }, ids }) => {
+        const effect = EFFECTS[effectKey]
+        if (!effect) return
+        effect.tick(ids, now - startTime, params).forEach(result => {
+          const { toR, toG, toB, toD } = this._resolveOutput(result, params)
+          if (toR !== undefined) oldOutputs.set(result.id, { d: toD, r: toR, g: toG, b: toB })
+        })
+      })
+      // For static→effect fixtures with no fading effect, use fromColors as old output
+      this._fromColors?.forEach((from, id) => {
+        if (!oldOutputs.has(id)) oldOutputs.set(id, from)
+      })
+    }
+
+    // ── Step 2: run new effects, blend with old layer ────────────────────────
+    this._buildGroups(this.fixtureEffects).forEach(({ entry: { effectKey, params, startTime }, ids }) => {
       const effect = EFFECTS[effectKey]
       if (!effect) return
-      const results = effect.tick(ids, now - startTime, params)
-      results.forEach(result => {
-        if (result.r !== undefined) {
-          this.setFixtureColor(result.id, result.r, result.g, result.b)
-        }
-        if (result.dimmer !== undefined) {
-          this.setFixtureDimmer(result.id, result.dimmer)
-        }
+      effect.tick(ids, now - startTime, params).forEach(result => {
+        const { toR, toG, toB, toD } = this._resolveOutput(result, params)
+        if (toR === undefined) return
+        if (!crossing) { this.setFixture(result.id, toD, toR, toG, toB); return }
+        const old = oldOutputs.get(result.id) ?? { d: 0, r: 0, g: 0, b: 0 }
+        this.setFixture(result.id,
+          Math.round(old.d + (toD - old.d) * envelope),
+          Math.round(old.r + (toR - old.r) * envelope),
+          Math.round(old.g + (toG - old.g) * envelope),
+          Math.round(old.b + (toB - old.b) * envelope)
+        )
       })
     })
+
+    // ── Step 3: effect→static fixtures (fading old effect out to a static colour) ──
+    if (hasStatic) {
+      this._staticTargets.forEach(({ d: toD, r: toR, g: toG, b: toB }, id) => {
+        const t   = crossing ? envelope : 1
+        const old = oldOutputs.get(id) ?? { d: 0, r: 0, g: 0, b: 0 }
+        this.setFixture(id,
+          Math.round(old.d + (toD - old.d) * t),
+          Math.round(old.r + (toR - old.r) * t),
+          Math.round(old.g + (toG - old.g) * t),
+          Math.round(old.b + (toB - old.b) * t)
+        )
+      })
+    }
+
+    // ── Step 4: cleanup when crossfade completes ─────────────────────────────
+    if (!crossing && (hasFading || hasStatic)) {
+      this._fadingEffects.clear()
+      this._staticTargets = null
+      this._fromColors    = null
+      this._stopTickerIfIdle()
+    }
   }
 }
