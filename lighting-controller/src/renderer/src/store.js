@@ -161,16 +161,11 @@ const useStore = create((set, get) => ({
     const scene = migrateScene(raw)
     if (!scene) return
 
-    get().effectEngine?.clearAll()
-    set({ fixtureEffects: {} })
-
     const duration = fadeMs ?? scene.fade_in_ms ?? 0
 
-    // Split fixtures: those with effects vs static
     const effectFixtures = scene.fixtures.filter(f => f.effect)
     const staticFixtures = scene.fixtures.filter(f => !f.effect)
 
-    // Start effects for a given fixture list (groups by identical effect+params)
     const applyEffects = (fixtures) => {
       const groups = new Map()
       fixtures.forEach(({ id, effect, effectParams }) => {
@@ -184,26 +179,50 @@ const useStore = create((set, get) => ({
       })
     }
 
-    // fromState reads raw d from fixtureState (what callers set, before masterDimmer scaling)
+    // Raw d from fixtureState (before masterDimmer scaling)
     const fromState = id => get().fixtureState[id] ?? { d: 0, r: 0, g: 0, b: 0 }
 
     if (duration > 0) {
-      // Static fixtures: FadeEngine crossfades all channels from current to target
-      staticFixtures.forEach(({ id, dim, r, g, b }) => {
-        const from = fromState(id)
-        get().fadeEngine?.fadeTo(id, from.d, from.r, from.g, from.b, dim ?? 254, r, g, b, duration)
-      })
+      // Snapshot which fixtures currently run effects (before anything is cleared)
+      const prevEffectIds = new Set(Object.keys(get().fixtureEffects).map(Number))
 
-      // Effect fixtures: EffectEngine crossfades from current output to new effect
-      if (effectFixtures.length > 0) {
-        const fromColors = new Map(effectFixtures.map(({ id }) => [id, fromState(id)]))
-        applyEffects(effectFixtures)
-        get().effectEngine?.startFadeIn(duration, fromColors)
-      }
+      // fromColors: static→effect fixtures (no old effect, gaining a new one)
+      const fromColors = new Map(
+        effectFixtures
+          .filter(({ id }) => !prevEffectIds.has(id))
+          .map(({ id }) => [id, fromState(id)])
+      )
+
+      // staticTargets: effect→static fixtures (had an effect, becoming static)
+      const staticTargets = new Map(
+        staticFixtures
+          .filter(({ id }) => prevEffectIds.has(id))
+          .map(({ id, dim, r, g, b }) => [id, { d: dim ?? 254, r, g, b }])
+      )
+
+      // Hand old effects to the fading layer; clear fixtureEffects for new ones
+      get().effectEngine?.beginCrossfade(
+        duration,
+        fromColors.size  ? fromColors   : null,
+        staticTargets.size ? staticTargets : null
+      )
+      set({ fixtureEffects: {} })
+
+      // Static→static only: FadeEngine (fixtures with no effect on either side)
+      staticFixtures
+        .filter(({ id }) => !prevEffectIds.has(id))
+        .forEach(({ id, dim, r, g, b }) => {
+          const from = fromState(id)
+          get().fadeEngine?.fadeTo(id, from.d, from.r, from.g, from.b, dim ?? 254, r, g, b, duration)
+        })
+
+      // Activate new effects (beginCrossfade already cleared old fixtureEffects)
+      if (effectFixtures.length > 0) applyEffects(effectFixtures)
+
     } else {
-      staticFixtures.forEach(({ id, dim, r, g, b }) => {
-        get().setFixture(id, dim ?? 254, r, g, b)
-      })
+      get().effectEngine?.clearAll()
+      set({ fixtureEffects: {} })
+      staticFixtures.forEach(({ id, dim, r, g, b }) => get().setFixture(id, dim ?? 254, r, g, b))
       applyEffects(effectFixtures)
     }
 
