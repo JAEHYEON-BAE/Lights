@@ -11,9 +11,8 @@ export const EFFECTS = {
     name: 'Color',
     static: true,
     defaultParams: { dim: 254, r: 255, g: 255, b: 255 },
-    init(fixtures, params, setFixtureColor, setFixtureDimmer) {
-      fixtures.forEach(id => setFixtureColor(id, params.r, params.g, params.b))
-      fixtures.forEach(id => setFixtureDimmer(id, params.dim))
+    init(fixtures, params, setFixture) {
+      fixtures.forEach(id => setFixture(id, params.dim, params.r, params.g, params.b))
     },
     tick() { return [] }
   },
@@ -33,8 +32,8 @@ export const EFFECTS = {
   sinePulse: {
     name: 'Sine Pulse',
     defaultParams: { speed: 1, r: 0, g: 100, b: 255, phaseOffset: 0, minBrightness: 0 },
-    init(fixtures, params, setFixtureColor) {
-      fixtures.forEach(id => setFixtureColor(id, params.r, params.g, params.b))
+    init(fixtures, params, setFixture) {
+      fixtures.forEach(id => setFixture(id, 254, params.r, params.g, params.b))
     },
     tick(fixtures, time, params) {
       const minDim = Math.round(params.minBrightness * 254)
@@ -82,8 +81,8 @@ export const EFFECTS = {
   strobe: {
     name: 'Strobe',
     defaultParams: { speed: 8, phaseOffset: 0, r: 255, g: 255, b: 255 },
-    init(fixtures, params, setFixtureColor) {
-      fixtures.forEach(id => setFixtureColor(id, params.r, params.g, params.b))
+    init(fixtures, params, setFixture) {
+      fixtures.forEach(id => setFixture(id, 254, params.r, params.g, params.b))
     },
     tick(fixtures, time, params) {
       return fixtures.map((id, idx) => {
@@ -117,11 +116,10 @@ function easeInOut(t) {
 }
 
 export class EffectEngine {
-  constructor(setFixtureColor, setFixtureDimmer) {
-    this.setFixtureColor  = setFixtureColor
-    this.setFixtureDimmer = setFixtureDimmer
-    this.fixtureEffects   = new Map()
-    this.ticker           = null
+  constructor(setFixture) {
+    this.setFixture        = setFixture
+    this.fixtureEffects    = new Map()
+    this.ticker            = null
     this._envelopeStart    = null
     this._envelopeDuration = 0
     this._fromColors       = null
@@ -147,7 +145,7 @@ export class EffectEngine {
     const startTime = Date.now()
     const groupId   = Symbol()
     fixtureIds.forEach(id => this.fixtureEffects.set(id, { effectKey, params, startTime, groupId }))
-    if (effect.init) effect.init(fixtureIds, params, this.setFixtureColor, this.setFixtureDimmer)
+    if (effect.init) effect.init(fixtureIds, params, this.setFixture)
     this._ensureTicker()
   }
 
@@ -158,7 +156,7 @@ export class EffectEngine {
       entry.params = params
       const effect = EFFECTS[entry.effectKey]
       if (effect?.static && effect?.init) {
-        effect.init([id], params, this.setFixtureColor, this.setFixtureDimmer)
+        effect.init([id], params, this.setFixture)
       }
     })
   }
@@ -213,27 +211,28 @@ export class EffectEngine {
       if (!effect) return
       const results = effect.tick(ids, now - startTime, params)
       results.forEach(({ id, r, g, b, dimmer }) => {
+        // Resolve target channels:
+        // - colour: tick output, or effect params for dimmer-only effects (sinePulse, strobe)
+        // - dimmer: tick output, or 254 (full) for colour-only effects (brightness baked in RGB)
+        const toR = r       !== undefined ? r       : params.r
+        const toG = r       !== undefined ? g       : params.g
+        const toB = r       !== undefined ? b       : params.b
+        const toD = dimmer  !== undefined ? dimmer  : 254
+
+        if (toR === undefined) return  // no colour info at all — skip
+
         if (envelope >= 1) {
-          if (r      !== undefined) this.setFixtureColor(id, r, g, b)
-          if (dimmer !== undefined) this.setFixtureDimmer(id, dimmer)
+          this.setFixture(id, toD, toR, toG, toB)
           return
         }
+        // Crossfade: lerp every channel from captured prior state to new effect output
         const from = this._fromColors?.get(id) ?? { d: 0, r: 0, g: 0, b: 0 }
-        // Target colour: from tick if available, else from effect params (dimmer-only effects
-        // like sinePulse/strobe set their colour via init, not per-tick)
-        const toR = r !== undefined ? r : params.r
-        const toG = r !== undefined ? g : params.g
-        const toB = r !== undefined ? b : params.b
-        if (toR !== undefined) {
-          this.setFixtureColor(id,
-            Math.round(from.r + (toR - from.r) * envelope),
-            Math.round(from.g + (toG - from.g) * envelope),
-            Math.round(from.b + (toB - from.b) * envelope)
-          )
-        }
-        if (dimmer !== undefined) {
-          this.setFixtureDimmer(id, Math.round(from.d + (dimmer - from.d) * envelope))
-        }
+        this.setFixture(id,
+          Math.round(from.d + (toD - from.d) * envelope),
+          Math.round(from.r + (toR - from.r) * envelope),
+          Math.round(from.g + (toG - from.g) * envelope),
+          Math.round(from.b + (toB - from.b) * envelope)
+        )
       })
     })
   }

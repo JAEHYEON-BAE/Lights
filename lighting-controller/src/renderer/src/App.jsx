@@ -30,8 +30,6 @@ export default function App() {
   const loadShows          = useStore(s => s.loadShows)
   const updateRunnerState  = useStore(s => s.updateRunnerState)
   const recallScene        = useStore(s => s.recallScene)
-  const setFixtureColor    = useStore(s => s.setFixtureColor)
-  const setFixtureDimmer   = useStore(s => s.setFixtureDimmer)
   const clearAllEffects    = useStore(s => s.clearAllEffects)
   const toggleBlackout     = useStore(s => s.toggleBlackout)
   const goNextCue          = useStore(s => s.goNextCue)
@@ -42,35 +40,31 @@ export default function App() {
 
   // Bootstrap
   useEffect(() => {
-    const fadeEng = new FadeEngine(setFixtureColor, setFixtureDimmer)
+    const { setFixture } = useStore.getState()
+
+    const fadeEng = new FadeEngine(setFixture)
     setFadeEngine(fadeEng)
 
-    const effectEng = new EffectEngine(setFixtureColor, setFixtureDimmer)
+    const effectEng = new EffectEngine(setFixture)
     effectEngineRef.current = effectEng
     setEffectEngine(effectEng)
 
     const bpmEng = new BpmEngine({
       onRecallScene: (sceneId, fadeMs) => recallScene(sceneId, fadeMs),
-      onBreakpoint:  (item) => {
+      onBreakpoint: (item) => {
         if (!item.scene_id) {
-          // No scene assigned — stop all effects first, then apply static white at 50% dimmer
+          // No scene assigned — stop all effects, then apply static white at 50% dimmer
           const state = useStore.getState()
           state.effectEngine?.clearAll()
           state.clearAllEffects()
-          state.fixtures.forEach(f => {
-            state.setFixtureColor(f.id, 255, 255, 255)
-            state.setFixtureDimmer(f.id, 127)
-          })
+          state.fixtures.forEach(f => state.setFixture(f.id, 127, 255, 255, 255))
         }
       },
       onShowEnd: () => {
         const state = useStore.getState()
         state.effectEngine?.clearAll()
         state.clearAllEffects()
-        state.fixtures.forEach(f => {
-          state.setFixtureColor(f.id, 0, 0, 0)
-          state.setFixtureDimmer(f.id, 0)
-        })
+        state.fixtures.forEach(f => state.setFixture(f.id, 0, 0, 0, 0))
       },
       onStateUpdate: (patch) => updateRunnerState(patch),
     })

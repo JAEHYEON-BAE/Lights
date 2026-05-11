@@ -190,10 +190,7 @@ export default function ShowScreen({ bpmEngine }) {
     const state = useStore.getState()
     state.effectEngine?.clearAll()
     state.clearAllEffects()
-    state.fixtures.forEach(f => {
-      state.setFixtureColor(f.id, 0, 0, 0)
-      state.setFixtureDimmer(f.id, 0)
-    })
+    state.fixtures.forEach(f => state.setFixture(f.id, 0, 0, 0, 0))
   }
   function handleGo()          { engine?.resume() }
   function handleSkipForward() { engine?.skipForward() }

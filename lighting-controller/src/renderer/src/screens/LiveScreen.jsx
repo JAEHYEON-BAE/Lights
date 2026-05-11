@@ -16,7 +16,6 @@ export default function LiveScreen({ effectEngine }) {
   const updateFixtureEffectParams = useStore(s => s.updateFixtureEffectParams)
   const clearFixtureEffect        = useStore(s => s.clearFixtureEffect)
   const saveScene                 = useStore(s => s.saveScene)
-  const setFixtureColor           = useStore(s => s.setFixtureColor)
 
   const [selectedIds, setSelectedIds] = useState([])
   const [effectKey, setEffectKey]     = useState('color')

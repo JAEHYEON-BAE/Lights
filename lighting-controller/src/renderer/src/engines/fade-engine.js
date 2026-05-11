@@ -3,18 +3,17 @@ function easeInOut(t) {
 }
 
 export class FadeEngine {
-  constructor(setFixtureColor, setFixtureDimmer) {
-    this.setFixtureColor  = setFixtureColor
-    this.setFixtureDimmer = setFixtureDimmer
-    this.activeFades = new Map()
-    this.ticker = setInterval(() => this._tick(), 16)
+  constructor(setFixture) {
+    this.setFixture   = setFixture
+    this.activeFades  = new Map()
+    this.ticker       = setInterval(() => this._tick(), 16)
   }
 
-  // Fade a single fixture from (fromD, fromR, fromG, fromB) to (toD, toR, toG, toB)
+  // Fade fixture from (fromD,fromR,fromG,fromB) to (toD,toR,toG,toB).
+  // All d values are raw (0–254); masterDimmer is applied inside setFixture.
   fadeTo(id, fromD, fromR, fromG, fromB, toD, toR, toG, toB, durationMs) {
     if (durationMs <= 0) {
-      this.setFixtureColor(id, toR, toG, toB)
-      this.setFixtureDimmer(id, toD)
+      this.setFixture(id, toD, toR, toG, toB)
       return
     }
     this.activeFades.set(id, {
@@ -33,12 +32,12 @@ export class FadeEngine {
     const now = Date.now()
     for (const [id, fade] of this.activeFades) {
       const t = easeInOut(Math.min((now - fade.startTime) / fade.duration, 1.0))
-      const r = Math.round(fade.startR + (fade.endR - fade.startR) * t)
-      const g = Math.round(fade.startG + (fade.endG - fade.startG) * t)
-      const b = Math.round(fade.startB + (fade.endB - fade.startB) * t)
-      const d = Math.round(fade.startD + (fade.endD - fade.startD) * t)
-      this.setFixtureColor(id, r, g, b)
-      this.setFixtureDimmer(id, d)
+      this.setFixture(id,
+        Math.round(fade.startD + (fade.endD - fade.startD) * t),
+        Math.round(fade.startR + (fade.endR - fade.startR) * t),
+        Math.round(fade.startG + (fade.endG - fade.startG) * t),
+        Math.round(fade.startB + (fade.endB - fade.startB) * t)
+      )
       if (t >= 1.0) this.activeFades.delete(id)
     }
   }

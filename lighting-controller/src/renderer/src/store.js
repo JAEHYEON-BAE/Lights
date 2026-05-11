@@ -37,13 +37,18 @@ const useStore = create((set, get) => ({
 
   // ── Fixtures ───────────────────────────────────────────────────────────────
   fixtures: [],
-  fixtureState: {},  // { [id]: { d, r, g, b } }  — intended values (editor state)
-  outputState:  {},  // { [id]: { d, r, g, b } }  — what was actually sent to hardware
+  fixtureState: {},  // { [id]: { d, r, g, b } }  — raw intended values (0–254)
+  outputState:  {},  // { [id]: { d, r, g, b } }  — scaled values actually sent to hardware
 
-  // Internal: send to hardware and record in outputState
-  _sendFixture: (id, d, r, g, b) => {
-    window.api.setFixture(id, d, r, g, b)
-    set(s => ({ outputState: { ...s.outputState, [id]: { d, r, g, b } } }))
+  // Set a fixture's d, r, g, b in one call.
+  // d is raw (0–254); masterDimmer is applied internally before sending to hardware.
+  setFixture: (id, d, r, g, b) => {
+    const rawD = Math.max(0, Math.min(254, Math.round(d)))
+    set(s => ({ fixtureState: { ...s.fixtureState, [id]: { d: rawD, r, g, b } } }))
+    if (!(get().fixtureEnabled[id] ?? true)) return
+    const scaledD = Math.round(rawD * get().masterDimmer)
+    window.api.setFixture(id, scaledD, r, g, b)
+    set(s => ({ outputState: { ...s.outputState, [id]: { d: scaledD, r, g, b } } }))
   },
 
   loadFixtures: (data) => {
@@ -74,26 +79,13 @@ const useStore = create((set, get) => ({
     })
   },
 
-  setFixtureColor: (id, r, g, b) => {
-    const d = Math.round(get().masterDimmer * 254)
-    set(s => ({ fixtureState: { ...s.fixtureState, [id]: { d, r, g, b } } }))
-    if (get().fixtureEnabled[id] ?? true) {
-      get()._sendFixture(id, d, r, g, b)
-    }
-  },
-
-  setFixtureDimmer: (id, d) => {
-    const clamped = Math.max(0, Math.min(254, Math.round(d)))
-    set(s => ({ fixtureState: { ...s.fixtureState, [id]: { ...s.fixtureState[id], d: clamped } } }))
-    if (!(get().fixtureEnabled[id] ?? true)) return
-    const c = get().fixtureState[id] || { r: 0, g: 0, b: 0 }
-    get()._sendFixture(id, clamped, c.r, c.g, c.b)
-  },
-
   setGroupColor: (groupId, r, g, b) => {
-    const { fixtures } = get()
+    const { fixtures, fixtureState } = get()
     const targets = groupId === 'all' ? fixtures : fixtures.filter(f => f.group === groupId)
-    targets.forEach(f => get().setFixtureColor(f.id, r, g, b))
+    targets.forEach(f => {
+      const d = fixtureState[f.id]?.d ?? 254
+      get().setFixture(f.id, d, r, g, b)
+    })
   },
 
   // ── Fixture enabled state ──────────────────────────────────────────────────
@@ -103,12 +95,11 @@ const useStore = create((set, get) => ({
     const next = !(get().fixtureEnabled[id] ?? true)
     set(s => ({ fixtureEnabled: { ...s.fixtureEnabled, [id]: next } }))
     if (!next) {
-      get()._sendFixture(id, 0, 0, 0, 0)
+      window.api.setFixture(id, 0, 0, 0, 0)
+      set(s => ({ outputState: { ...s.outputState, [id]: { d: 0, r: 0, g: 0, b: 0 } } }))
     } else {
-      const { masterDimmer, fixtureState } = get()
-      const d = Math.round(masterDimmer * 254)
-      const c = fixtureState[id] || { r: 0, g: 0, b: 0 }
-      get()._sendFixture(id, d, c.r, c.g, c.b)
+      const c = get().fixtureState[id] || { d: 254, r: 0, g: 0, b: 0 }
+      get().setFixture(id, c.d, c.r, c.g, c.b)
     }
   },
 
@@ -122,21 +113,13 @@ const useStore = create((set, get) => ({
     const next = !get().blackoutActive
     set({ blackoutActive: next })
     window.api.setBlackout(next)
-    const { fixtures, fixtureState, fixtureEnabled, masterDimmer } = get()
-    if (next) {
-      // Reflect blackout in outputState
-      set(s => {
-        const output = { ...s.outputState }
-        fixtures.forEach(f => { output[f.id] = { d: 0, r: 0, g: 0, b: 0 } })
-        return { outputState: output }
-      })
-    } else {
-      // Re-broadcast current state so hardware and outputState are in sync
-      const d = Math.round(masterDimmer * 254)
+    if (!next) {
+      // Restore: re-broadcast fixtureState with masterDimmer applied
+      const { fixtures, fixtureState, fixtureEnabled } = get()
       fixtures.forEach(f => {
         if (!(fixtureEnabled[f.id] ?? true)) return
-        const c = fixtureState[f.id] || { r: 0, g: 0, b: 0 }
-        get()._sendFixture(f.id, d, c.r, c.g, c.b)
+        const c = fixtureState[f.id] || { d: 254, r: 0, g: 0, b: 0 }
+        get().setFixture(f.id, c.d, c.r, c.g, c.b)
       })
     }
   },
@@ -145,13 +128,12 @@ const useStore = create((set, get) => ({
   masterDimmer: 1.0,
 
   setMasterDimmer: (value) => {
-    const d = Math.round(value * 254)
     set({ masterDimmer: value })
     const { fixtures, fixtureState, fixtureEnabled } = get()
     fixtures.forEach(f => {
       if (!(fixtureEnabled[f.id] ?? true)) return
-      const c = fixtureState[f.id] || { r: 0, g: 0, b: 0 }
-      get()._sendFixture(f.id, d, c.r, c.g, c.b)
+      const c = fixtureState[f.id] || { d: 254, r: 0, g: 0, b: 0 }
+      get().setFixture(f.id, c.d, c.r, c.g, c.b)
     })
   },
 
@@ -202,11 +184,11 @@ const useStore = create((set, get) => ({
       })
     }
 
-    if (duration > 0) {
-      const outputState = get().outputState
-      const fromState   = id => outputState[id] ?? { d: 0, r: 0, g: 0, b: 0 }
+    // fromState reads raw d from fixtureState (what callers set, before masterDimmer scaling)
+    const fromState = id => get().fixtureState[id] ?? { d: 0, r: 0, g: 0, b: 0 }
 
-      // Static fixtures: FadeEngine crossfades d,r,g,b from current output to target
+    if (duration > 0) {
+      // Static fixtures: FadeEngine crossfades all channels from current to target
       staticFixtures.forEach(({ id, dim, r, g, b }) => {
         const from = fromState(id)
         get().fadeEngine?.fadeTo(id, from.d, from.r, from.g, from.b, dim ?? 254, r, g, b, duration)
@@ -220,8 +202,7 @@ const useStore = create((set, get) => ({
       }
     } else {
       staticFixtures.forEach(({ id, dim, r, g, b }) => {
-        get().setFixtureColor(id, r, g, b)
-        get().setFixtureDimmer(id, dim ?? 254)
+        get().setFixture(id, dim ?? 254, r, g, b)
       })
       applyEffects(effectFixtures)
     }
