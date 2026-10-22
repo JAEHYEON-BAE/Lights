@@ -1,6 +1,6 @@
 {
   "name": "lighting-controller",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "description": "Standalone DMX stage lighting controller",
   "main": "out/main/index.js",
   "scripts": {

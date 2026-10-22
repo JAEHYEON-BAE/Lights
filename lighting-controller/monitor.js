@@ -4,6 +4,16 @@
  * Run:  node monitor.js [port]  (e.g. node monitor.js /dev/cu.usbmodem14201)
  * If no port is given, lists available ports and exits.
  *
+ * Protocol (must stay in sync with src/main/serial-bridge.js and
+ * arduino/lighting_controller/lighting_controller.ino):
+ *   PC → Arduino : [0xFF][fixture_id][D][R][G][B]   — 6 bytes
+ *                  [0xFF][0xFE][0][0][0]            — blackout all
+ *                  [0xFF][0xFD][0][0][0]            — DMX reset
+ *   Arduino → PC : [0xAA][0x01][dmx_running][pkt_count][err_count][0][0][0]
+ *
+ * D/R/G/B are clamped to 0–254 by the sender, so 0xFF only ever appears as a
+ * start byte; seeing it anywhere else means a byte was lost (framing error).
+ *
  * Modes:
  *   --listen   Open port and display decoded packets (acts as fake Arduino)
  *   --send     Send test packets to a real Arduino and show responses
@@ -30,7 +40,7 @@ const hideCursor = () => process.stdout.write(`${ESC}?25l`)
 const showCursor = () => process.stdout.write(`${ESC}?25h`)
 
 // ── State ─────────────────────────────────────────────────────────────────────
-const fixtureState = Array.from({ length: MAX_FIXTURES }, () => ({ r: 0, g: 0, b: 0 }))
+const fixtureState = Array.from({ length: MAX_FIXTURES }, () => ({ d: 0, r: 0, g: 0, b: 0 }))
 let packetCount    = 0
 let errorCount     = 0
 let blackoutActive = false
@@ -40,7 +50,7 @@ let startTime      = Date.now()
 
 // ── Packet parser (mirrors Arduino state machine) ─────────────────────────────
 let parserState = 'WAIT_START'
-let pkt_id, pkt_r, pkt_g
+let pkt_id, pkt_d, pkt_r, pkt_g
 
 function parseByte(byte) {
   switch (parserState) {
@@ -52,7 +62,7 @@ function parseByte(byte) {
       if (byte === START_BYTE) { errorCount++; parserState = 'READ_ID' }
       else if (byte === CMD_BLACKOUT) {
         blackoutActive = true
-        fixtureState.forEach(f => { f.r = 0; f.g = 0; f.b = 0 })
+        fixtureState.forEach(f => { f.d = 0; f.r = 0; f.g = 0; f.b = 0 })
         packetCount++
         parserState = 'WAIT_START'
         logEvent('BLACKOUT ALL')
@@ -62,8 +72,13 @@ function parseByte(byte) {
       } else {
         blackoutActive = false
         pkt_id = byte
-        parserState = 'READ_R'
+        parserState = 'READ_DIMMER'
       }
+      break
+
+    case 'READ_DIMMER':
+      if (byte === START_BYTE) { errorCount++; parserState = 'READ_ID' }
+      else { pkt_d = byte; parserState = 'READ_R' }
       break
 
     case 'READ_R':
@@ -80,7 +95,7 @@ function parseByte(byte) {
       if (byte === START_BYTE) { errorCount++; parserState = 'READ_ID' }
       else {
         if (pkt_id < MAX_FIXTURES) {
-          fixtureState[pkt_id] = { r: pkt_r, g: pkt_g, b: byte }
+          fixtureState[pkt_id] = { d: pkt_d, r: pkt_r, g: pkt_g, b: byte }
         }
         packetCount++
         lastPacketTime = Date.now()
@@ -166,22 +181,26 @@ function render(portPath) {
   }
 
   // Fixture grid
-  process.stdout.write(`\n${bold('Fixture States:')}  ${dim('(ID · RGB · bar · swatch)')}\n`)
-  process.stdout.write(dim('─'.repeat(72)) + '\n')
+  process.stdout.write(`\n${bold('Fixture States:')}  ${dim('(ID · D · RGB · bar · swatch — bar/swatch are dimmer-scaled)')}\n`)
+  process.stdout.write(dim('─'.repeat(84)) + '\n')
 
-  const active = fixtureState.filter((f, i) => i < MAX_FIXTURES && (f.r || f.g || f.b))
   const showCount = Math.min(MAX_FIXTURES, 16)
 
   for (let id = 0; id < showCount; id++) {
-    const { r, g, b } = fixtureState[id]
+    const { d, r, g, b } = fixtureState[id]
+    // The fixture applies its dimmer channel to RGB — mirror that here.
+    const sr = Math.round(r * d / 254)
+    const sg = Math.round(g * d / 254)
+    const sb = Math.round(b * d / 254)
     const idStr  = id.toString().padStart(2, ' ')
+    const dStr   = dim(d.toString().padStart(3))
     const rStr   = col(255,80,80,  r.toString().padStart(3))
     const gStr   = col(80,255,80,  g.toString().padStart(3))
     const bStr   = col(80,120,255, b.toString().padStart(3))
     const isOdd  = id % 2
 
     process.stdout.write(
-      `  ${dim(idStr)}  ${rStr} ${gStr} ${bStr}  ${bar(r, g, b)}  ${colorSwatch(r, g, b)}` +
+      `  ${dim(idStr)}  ${dStr} ${rStr} ${gStr} ${bStr}  ${bar(sr, sg, sb)}  ${colorSwatch(sr, sg, sb)}` +
       (isOdd ? '\n' : '   ')
     )
   }
@@ -227,11 +246,15 @@ async function main() {
       // Send test sweep: cycle through all fixtures
       let id = 0, hue = 0
       setInterval(() => {
-        const r = Math.round(127 + 127 * Math.sin((hue + id * 30) * Math.PI / 180))
-        const g = Math.round(127 + 127 * Math.sin((hue + id * 30 + 120) * Math.PI / 180))
-        const b = Math.round(127 + 127 * Math.sin((hue + id * 30 + 240) * Math.PI / 180))
-        port.write(Buffer.from([0xFF, id, r, g, b]))
-        parseByte(0xFF); parseByte(id); parseByte(r); parseByte(g); parseByte(b)
+        // 0xFF is reserved for the start byte — clamp data bytes to 254.
+        const clamp = v => Math.max(0, Math.min(254, v))
+        const d = 254
+        const r = clamp(Math.round(127 + 127 * Math.sin((hue + id * 30) * Math.PI / 180)))
+        const g = clamp(Math.round(127 + 127 * Math.sin((hue + id * 30 + 120) * Math.PI / 180)))
+        const b = clamp(Math.round(127 + 127 * Math.sin((hue + id * 30 + 240) * Math.PI / 180)))
+        port.write(Buffer.from([START_BYTE, id, d, r, g, b]))
+        parseByte(START_BYTE); parseByte(id); parseByte(d)
+        parseByte(r); parseByte(g); parseByte(b)
         id = (id + 1) % 8
         hue = (hue + 2) % 360
       }, 23) // ~44 Hz

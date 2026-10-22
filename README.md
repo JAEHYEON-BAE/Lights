@@ -52,15 +52,26 @@ xattr -cr /Applications/Lighting\ Controller.app
 | Component | Details |
 |---|---|
 | Arduino Mega 2560 | USB connection to PC |
-| Conceptinetics DMX Shield | Mounted on the Arduino |
-| RGB DMX Fixtures | Up to 32, any 3ch / 7ch / 4ch RGB PAR type |
+| MAX485 (RS-485) module | Wired to the Arduino — see the pin table below |
+| RGB DMX Fixtures | Up to 32, RGB PAR 3ch / 4ch / 7ch or RGBA 8ch |
+
+**MAX485 wiring (Mega 2560):**
+
+| MAX485 | Arduino Mega |
+|---|---|
+| DI | pin 18 (TX1) |
+| DE + RE | pin 2 (direction control) |
+| RO | pin 19 (RX1, unused) |
+| A / B | DMX+ / DMX− |
 
 > **No hardware?** Use **Simulate mode** (Settings → Start Simulate) to run the full app without any physical devices.
 
 ### Arduino Setup
-1. Install the `Conceptinetics` library from the Arduino Library Manager.
-2. Flash `arduino/lighting_controller.ino` onto your Arduino Mega 2560.
-3. Connect the Arduino to your PC via USB.
+1. Flash `arduino/lighting_controller/lighting_controller.ino` onto your Arduino Mega 2560.
+   No external library is required — the firmware drives USART1 directly, which is
+   exactly why it does *not* use the Conceptinetics DMX library (both claim the same
+   interrupt vector as `HardwareSerial` and will not link together).
+2. Connect the Arduino to your PC via USB.
 
 ---
 
@@ -70,7 +81,7 @@ xattr -cr /Applications/Lighting\ Controller.app
 - Per-fixture RGB color picker with individual dimmer control
 - Group control — change all fixtures in a group at once
 - Master dimmer slider
-- **Instant blackout** toggle
+- Per-fixture **ON/OFF** toggle — a disabled fixture stays dark even while an effect runs
 
 ### Scenes
 - Save the current lighting state as a named scene
@@ -82,11 +93,20 @@ xattr -cr /Applications/Lighting\ Controller.app
 - Per-cue configurable fade time
 - Navigate cues with keyboard shortcuts during performance
 
+### Show (BPM Sync)
+- Build a setlist of songs, each with its own BPM and time signature
+- Split a song into segments that hold a scene for a set number of bars
+- Lighting advances automatically on the beat — no GO button during a song
+- **Breakpoints** pause the run for intermissions until the operator resumes
+- Optional **metronome** click on a selectable audio output device
+
 ### Effect Engine
-- Apply real-time effects to individual fixtures or groups:
-  - **Chase** — sequential color sweep across fixtures
+- Apply real-time effects per fixture, with a cross-fade when effects change:
+  - **Color** — static solid color
+  - **Color Chase** — sequential color sweep across fixtures
   - **Sine Pulse** — smooth brightness pulsing
-  - **Color Wave** — rolling hue wave
+  - **Color Wave** — rolling hue wave between two hues
+  - **Color Step** — steps through a list of hues
   - **Strobe** — configurable strobe flash
   - **Random Flicker** — organic flicker simulation
 
@@ -100,13 +120,14 @@ xattr -cr /Applications/Lighting\ Controller.app
 
 ## Keyboard Shortcuts
 
-| Key | Action |
-|---|---|
-| `Space` | Toggle blackout |
-| `Enter` | Next cue |
-| `Backspace` | Previous cue |
+| Screen | Key | Action |
+|---|---|---|
+| Live, Cue List | `Enter` | Next cue |
+| Live, Cue List | `Backspace` | Previous cue |
+| Show | `Enter` / `→` | Resume from a breakpoint, or skip forward one segment |
+| Show | `Backspace` / `←` | Skip back one segment |
 
-Shortcuts are suppressed when a text input is focused.
+Shortcuts are suppressed when a text input, select, or button is focused.
 
 ---
 
