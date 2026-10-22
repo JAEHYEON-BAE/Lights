@@ -2,12 +2,15 @@
 """
 Arduino lighting controller test script.
 Matches lighting_controller.ino exactly:
-  PC → Arduino : [0xFF][id][R][G][B]   (id 0–7 active)
-                  [0xFF][0xFE][...] = blackout all
-                  [0xFF][0xFD][...] = DMX reset
+  PC → Arduino : [0xFF][id][D][R][G][B]   (6 bytes, id 0–7 active)
+                  [0xFF][0xFE][0][0][0] = blackout all
+                  [0xFF][0xFD][0][0][0] = DMX reset
   Arduino → PC : [0xAA][0x01][0x01][pkt_count][err_count][0][0][0]  (every 1 s)
 
-NOTE: 0xFF is NOT a valid R/G/B value — firmware treats it as a framing error.
+NOTE: 0xFF is NOT a valid D/R/G/B value — firmware treats it as a framing error
+      and re-synchronises, so every data byte is clamped to 0–254.
+      D is the 7ch fixture's dimmer channel; the fixture multiplies RGB by it,
+      so D=0 leaves the light dark whatever RGB says.
       fixtureMap: 0→ch1, 1→ch8, 2→ch15, 3→ch22, 4→ch29, 5→ch36, 6→ch43, 7→ch50
 
 Usage:
@@ -32,9 +35,10 @@ def find_port():
     return candidates[0]
 
 
-def fixture_packet(fixture_id, r, g, b):
-    # clamp — 0xFF is invalid for R/G/B (firmware treats it as framing error)
-    return bytes([0xFF, fixture_id, min(r, 0xFE), min(g, 0xFE), min(b, 0xFE)])
+def fixture_packet(fixture_id, d, r, g, b):
+    # clamp — 0xFF is invalid for D/R/G/B (firmware treats it as framing error)
+    return bytes([0xFF, fixture_id,
+                  min(d, 0xFE), min(r, 0xFE), min(g, 0xFE), min(b, 0xFE)])
 
 def blackout_packet():
     return bytes([0xFF, 0xFE, 0, 0, 0])
@@ -80,7 +84,7 @@ def test_all_fixtures(ser):
     print("\n-- test_all_fixtures: cycling through fixtures 0–7 --")
     for fid, base in FIXTURE_MAP.items():
         print(f"  fixture {fid}  (DMX base ch {base})  → white", end="", flush=True)
-        ser.write(fixture_packet(fid, 254, 254, 254))
+        ser.write(fixture_packet(fid, 254, 254, 254, 254))
         time.sleep(0.4)
         ser.write(blackout_packet())
         print("  → blackout")
@@ -92,7 +96,7 @@ def test_rgb_channels(ser, fixture_id=0):
     print(f"\n-- test_rgb_channels: fixture {fixture_id} --")
     for label, r, g, b in [("RED", 254, 0, 0), ("GREEN", 0, 254, 0), ("BLUE", 0, 0, 254)]:
         print(f"  {label}")
-        ser.write(fixture_packet(fixture_id, r, g, b))
+        ser.write(fixture_packet(fixture_id, 254, r, g, b))
         time.sleep(0.6)
     ser.write(blackout_packet())
     print("  BLACKOUT")
@@ -101,7 +105,7 @@ def test_rgb_channels(ser, fixture_id=0):
 def test_blackout_and_reset(ser):
     """Verify 0xFE blackout and 0xFD DMX reset commands."""
     print("\n-- test_blackout_and_reset --")
-    ser.write(fixture_packet(0, 254, 254, 254))
+    ser.write(fixture_packet(0, 254, 254, 254, 254))
     time.sleep(0.3)
     print("  sending BLACKOUT (0xFE)")
     ser.write(blackout_packet())
